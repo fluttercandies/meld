@@ -324,10 +324,10 @@ final class MeldIconController extends ChangeNotifier {
 
   void set(MeldSource source) {
     _ensureAlive();
-    _validateSource(source);
-    _stopTicker();
-    _completePrevious(MeldTransitionEnd.cancelled);
     try {
+      _validateSource(source);
+      _stopTicker();
+      _completePrevious(MeldTransitionEnd.cancelled);
       _current = source;
       _previousSource = null;
       _planStartSource = null;
@@ -359,6 +359,7 @@ final class MeldIconController extends ChangeNotifier {
       }
       final t = value.clamp(0, 1).toDouble();
       _validateSource(source);
+      _lastError = null;
       final base = _current ?? source;
       if (_current == null) _currentPaintStyle = base.paintStyle;
       _previousSource ??= _current;
@@ -431,6 +432,19 @@ final class MeldIconController extends ChangeNotifier {
     SpringPreset? preset,
   }) {
     _ensureAlive();
+    try {
+      return _reverse(spring: spring, preset: preset);
+    } on MeldException catch (error) {
+      _fail(error);
+      return Future.error(error);
+    }
+  }
+
+  Future<MeldTransitionResult> _reverse({
+    SpringConfig? spring,
+    SpringPreset? preset,
+  }) {
+    _lastError = null;
     final plan = _plan;
     final outputs = _outputs;
     if (plan != null && outputs != null && _target != null) {

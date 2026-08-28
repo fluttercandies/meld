@@ -62,6 +62,19 @@ void main() {
     controller.dispose();
   });
 
+  test('invalid set enters failed state and a valid seek recovers', () {
+    final controller = MeldIconController(initialSource: _line);
+    controller.set(const PathDataSource('M0 0'));
+
+    expect(controller.status, MeldIconStatus.failed);
+    expect(controller.lastError?.code, 'empty-icon');
+
+    controller.seek(_cross, 0.5);
+    expect(controller.status, MeldIconStatus.paused);
+    expect(controller.lastError, isNull);
+    controller.dispose();
+  });
+
   testWidgets('reverse works from running, paused, and completed states',
       (tester) async {
     final controller = MeldIconController(initialSource: _line)
