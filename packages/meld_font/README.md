@@ -1,5 +1,9 @@
 # meld_font
 
+[![pub package](https://img.shields.io/pub/v/meld_font.svg)](https://pub.dev/packages/meld_font)
+[![CI](https://github.com/fluttercandies/meld/actions/workflows/ci.yml/badge.svg)](https://github.com/fluttercandies/meld/actions/workflows/ci.yml)
+[![MIT license](https://img.shields.io/badge/license-MIT-6D5EF7.svg)](https://github.com/fluttercandies/meld/blob/main/LICENSE)
+
 Optional pure Dart adapter that turns caller-owned static TrueType glyph outlines into Meld geometry. It resolves Unicode cmap entries, expands simple and composite `glyf` contours, and converts quadratic segments to cubic paths without bundling a font.
 
 ## Install

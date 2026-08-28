@@ -1,5 +1,9 @@
 # meld_core
 
+[![pub package](https://img.shields.io/pub/v/meld_core.svg)](https://pub.dev/packages/meld_core)
+[![CI](https://github.com/fluttercandies/meld/actions/workflows/ci.yml/badge.svg)](https://github.com/fluttercandies/meld/actions/workflows/ci.yml)
+[![MIT license](https://img.shields.io/badge/license-MIT-6D5EF7.svg)](https://github.com/fluttercandies/meld/blob/main/LICENSE)
+
 Pure Dart geometry planning for Meld. It has no Flutter or platform dependency, so the same deterministic plan can run in Dart VM, isolates, servers, and Flutter applications.
 
 ## Install

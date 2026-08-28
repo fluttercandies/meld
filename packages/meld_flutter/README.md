@@ -1,5 +1,9 @@
 # meld_flutter
 
+[![pub package](https://img.shields.io/pub/v/meld_flutter.svg)](https://pub.dev/packages/meld_flutter)
+[![CI](https://github.com/fluttercandies/meld/actions/workflows/ci.yml/badge.svg)](https://github.com/fluttercandies/meld/actions/workflows/ci.yml)
+[![MIT license](https://img.shields.io/badge/license-MIT-6D5EF7.svg)](https://github.com/fluttercandies/meld/blob/main/LICENSE)
+
 Native Flutter rendering for Meld. `MeldIcon` paints normalized geometry through a precise `CustomPainter` repaint boundary, while `MeldIconController` provides interruptible spring motion, scrubbing, pause/resume, reverse playback, and sequences.
 
 ## Install

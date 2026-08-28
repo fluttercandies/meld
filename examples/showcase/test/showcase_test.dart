@@ -11,6 +11,28 @@ void main() {
     expect(find.text('Explore the motion'), findsOneWidget);
   });
 
+  testWidgets('wide header labels the stress test action', (tester) async {
+    final originalSize = tester.view.physicalSize;
+    final originalDevicePixelRatio = tester.view.devicePixelRatio;
+    addTearDown(() {
+      tester.view.physicalSize = originalSize;
+      tester.view.devicePixelRatio = originalDevicePixelRatio;
+    });
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+
+    await tester.pumpWidget(const MeldShowcaseApp());
+    expect(find.text('Stress test'), findsOneWidget);
+    expect(find.byIcon(Icons.grid_view_rounded), findsOneWidget);
+    final platformCenter = tester.getCenter(
+      find.text('Dart · Flutter · deterministic'),
+    );
+    final actionCenter = tester.getCenter(
+      find.byKey(const ValueKey<String>('stress-test-button')),
+    );
+    expect((platformCenter.dy - actionCenter.dy).abs(), lessThan(1));
+  });
+
   testWidgets('opens the multi-instance stress page', (tester) async {
     await tester.pumpWidget(const MeldShowcaseApp());
     await tester.tap(

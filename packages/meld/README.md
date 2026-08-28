@@ -1,5 +1,9 @@
 # meld
 
+[![pub package](https://img.shields.io/pub/v/meld.svg)](https://pub.dev/packages/meld)
+[![CI](https://github.com/fluttercandies/meld/actions/workflows/ci.yml/badge.svg)](https://github.com/fluttercandies/meld/actions/workflows/ci.yml)
+[![MIT license](https://img.shields.io/badge/license-MIT-6D5EF7.svg)](https://github.com/fluttercandies/meld/blob/main/LICENSE)
+
 The one-import Flutter facade for deterministic vector shape morphing. `meld` combines the geometry planner, native `MeldIcon` widget, spring motion, diagnostics, and optional font-outline adapter.
 
 ## Install

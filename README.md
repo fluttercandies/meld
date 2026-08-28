@@ -2,6 +2,12 @@
   <img src="assets/meld-lockup.svg" alt="Meld" width="280">
 </p>
 
+<p align="center">
+  <a href="https://pub.dev/packages/meld"><img src="https://img.shields.io/pub/v/meld.svg?label=pub.dev" alt="pub.dev package"></a>
+  <a href="https://github.com/fluttercandies/meld/actions/workflows/ci.yml"><img src="https://github.com/fluttercandies/meld/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6D5EF7.svg" alt="MIT license"></a>
+</p>
+
 <p align="center"><strong>Shape transitions with a point of view.</strong><br>Deterministic geometry, spring motion, and a native Flutter surface in one small API.</p>
 
 <p align="center">

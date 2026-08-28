@@ -1258,39 +1258,77 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(crossAxisAlignment: CrossAxisAlignment.end, children: <Widget>[
-      _MeldMark(size: wide ? 52 : 44),
-      SizedBox(width: wide ? 14 : 12),
-      Expanded(
-          child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-            Text(
-              'Meld',
-              style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                    fontSize: wide ? 36 : 32,
-                  ),
+    final stressAction = wide
+        ? OutlinedButton.icon(
+            key: const ValueKey<String>('stress-test-button'),
+            onPressed: onOpenStressTest,
+            icon: const Icon(Icons.grid_view_rounded, size: 18),
+            label: const Text('Stress test'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: _MeldColors.ink,
+              side: const BorderSide(color: _MeldColors.outline),
+              minimumSize: const Size(0, 44),
+              padding: const EdgeInsets.symmetric(horizontal: 13),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              textStyle: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-            Text(
-              'Shape transitions with a point of view.',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(color: _MeldColors.inkMuted),
+          )
+        : IconButton(
+            key: const ValueKey<String>('stress-test-button'),
+            tooltip: 'Open stress test',
+            onPressed: onOpenStressTest,
+            icon: const Icon(Icons.grid_view_rounded),
+            style: IconButton.styleFrom(
+              foregroundColor: _MeldColors.ink,
+              backgroundColor: _MeldColors.surfaceRaised,
+              side: const BorderSide(color: _MeldColors.outline),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
-          ])),
-      if (wide)
-        const Text(
-          'Dart · Flutter · deterministic',
-          style: TextStyle(color: _MeldColors.inkMuted, fontSize: 13),
-        ),
-      IconButton(
-        key: const ValueKey<String>('stress-test-button'),
-        tooltip: 'Open stress test',
-        onPressed: onOpenStressTest,
-        icon: const Icon(Icons.speed_rounded),
-      ),
-    ]);
+          );
+
+    return Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: <Widget>[
+          _MeldMark(size: wide ? 52 : 44),
+          SizedBox(width: wide ? 14 : 12),
+          Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                Text(
+                  'Meld',
+                  style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                        fontSize: wide ? 36 : 32,
+                      ),
+                ),
+                Text(
+                  'Shape transitions with a point of view.',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(color: _MeldColors.inkMuted),
+                ),
+              ])),
+          if (wide) ...<Widget>[
+            const SizedBox(width: 16),
+            const Flexible(
+              child: Text(
+                'Dart · Flutter · deterministic',
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: _MeldColors.inkMuted, fontSize: 13),
+              ),
+            ),
+          ],
+          const SizedBox(width: 10),
+          stressAction,
+        ]);
   }
 }
 
