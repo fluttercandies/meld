@@ -7,6 +7,10 @@ import 'package:meld_flutter/meld_flutter.dart';
 
 const _line = PathDataSource('M3 12H21');
 const _cross = PathDataSource('M5 5L19 19M19 5L5 19');
+const _circle = PathDataSource(
+  'M12 2C17.52 2 22 6.48 22 12C22 17.52 17.52 22 12 22C6.48 22 2 17.52 2 12C2 6.48 6.48 2 12 2Z',
+);
+const _square = PathDataSource('M3 3H21V21H3Z');
 
 void main() {
   test('unattached controller completes safely instead of hanging', () async {
@@ -352,6 +356,40 @@ void main() {
         MaterialApp(home: MeldIcon(controller: controller, label: 'Icon')));
     await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
     expect(controller.status, isNot(MeldIconStatus.disposed));
+    controller.dispose();
+  });
+
+  testWidgets('keeps flight geometry active during endpoint overshoot',
+      (tester) async {
+    final controller = MeldIconController(initialSource: _circle)
+      ..motionMode = MeldMotionMode.always;
+    await tester.pumpWidget(
+      MaterialApp(home: MeldIcon(controller: controller, label: 'Overshoot')),
+    );
+
+    final transition = controller.morphTo(
+      _square,
+      spring: const SpringConfig(stiffness: 420, damping: 8),
+    );
+    expect(controller.status, MeldIconStatus.running);
+    expect(controller.canonicalPaths, isNull);
+
+    var reachedClampedEndpoint = false;
+    for (var frame = 0; frame < 180; frame++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      if (controller.status == MeldIconStatus.running &&
+          controller.progress >= 1 - 1e-9) {
+        reachedClampedEndpoint = true;
+        break;
+      }
+    }
+    expect(reachedClampedEndpoint, isTrue);
+    expect(controller.canonicalPaths, isNull);
+
+    await tester.pumpAndSettle(const Duration(milliseconds: 16));
+    expect(controller.status, MeldIconStatus.completed);
+    expect(controller.canonicalPaths, isNotNull);
+    expect((await transition).end, MeldTransitionEnd.completed);
     controller.dispose();
   });
 

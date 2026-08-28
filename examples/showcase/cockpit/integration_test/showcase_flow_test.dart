@@ -34,6 +34,7 @@ void main() {
       await cockpit.flutter.pump(const Duration(milliseconds: 40));
       expect(initialController.status, MeldIconStatus.running);
       expect(initialController.progress, greaterThan(0));
+      expect(initialController.canonicalPaths, isNull);
       for (
         var frame = 0;
         frame < 180 && initialController.isAnimating;

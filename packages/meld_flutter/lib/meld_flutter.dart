@@ -215,9 +215,18 @@ final class MeldIconController extends ChangeNotifier {
   /// displayed. Resting endpoints use canonical curves instead of sampled
   /// flight polylines, keeping small icons crisp and continuous.
   List<CubicPath>? get canonicalPaths {
+    if (!_isAtCanonicalEndpoint) return null;
     if (_progress >= 1 - 1e-6) return _targetCanonicalPaths;
     return currentPaths;
   }
+
+  /// A clamped progress value can reach an endpoint while a spring is still
+  /// overshooting. Canonical geometry is safe only after the controller has
+  /// actually stopped, otherwise the painter would alternate between the
+  /// sampled flight buffer and the endpoint path during the same transition.
+  bool get _isAtCanonicalEndpoint =>
+      _status != MeldIconStatus.running &&
+      (_progress <= 1e-6 || _progress >= 1 - 1e-6);
 
   List<CubicPath>? get _targetCanonicalPaths {
     final source = _target ?? _current;
@@ -673,7 +682,8 @@ final class MeldIconPainter extends CustomPainter {
       ..strokeJoin = strokeJoin
       ..isAntiAlias = antiAlias;
     final progress = controller.progress;
-    final atCanonicalEndpoint = progress <= 1e-6 || progress >= 1 - 1e-6;
+    final atCanonicalEndpoint =
+        !controller.isAnimating && (progress <= 1e-6 || progress >= 1 - 1e-6);
     final outputs = atCanonicalEndpoint ? null : controller.flightPaths;
     final closed = controller.closedPaths;
     final allPath = ui.Path();
