@@ -47,9 +47,17 @@ void main() {
     await tester.pump(const Duration(milliseconds: 96));
     expect(controller.status, MeldIconStatus.running);
     expect(controller.progress, greaterThan(0));
+    final forwardProgress = controller.progress;
+    final forwardVelocity = controller.velocity;
     controller.pause();
     expect(controller.status, MeldIconStatus.paused);
     final resumed = controller.reverse();
+    expect(controller.progress, closeTo(forwardProgress, 1e-9));
+    expect(controller.velocity, closeTo(-forwardVelocity, 1e-9));
+    final reverseStart = controller.progress;
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(controller.progress, lessThan(reverseStart));
     await tester.pumpAndSettle(const Duration(milliseconds: 16));
     expect((await resumed).end, MeldTransitionEnd.completed);
     expect((await forward).end, MeldTransitionEnd.completed);
@@ -66,6 +74,9 @@ void main() {
     expect(controller.progress, 1);
 
     final completedBackward = controller.reverse();
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(controller.progress, lessThan(1));
     await tester.pumpAndSettle(const Duration(milliseconds: 16));
     expect((await completedBackward).end, MeldTransitionEnd.completed);
     expect(controller.currentSource, same(_line));

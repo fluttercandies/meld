@@ -395,9 +395,12 @@ final class MeldIconController extends ChangeNotifier {
     if (_ticker == null) _finishAtSpringTarget();
   }
 
-  /// Reverses the current transition while preserving its geometry and
-  /// velocity. At a settled endpoint it returns to the immediately previous
-  /// endpoint, if one exists.
+  /// Reverses the current transition from its current shape.
+  ///
+  /// The existing geometry plan is kept, while the spring target and velocity
+  /// direction are exchanged in place. This preserves the visible position
+  /// and spring phase, so the first effective frame travels immediately in the
+  /// opposite direction without a restart hitch.
   Future<MeldTransitionResult> reverse({
     SpringConfig? spring,
     SpringPreset? preset,
@@ -406,9 +409,10 @@ final class MeldIconController extends ChangeNotifier {
     final plan = _plan;
     final outputs = _outputs;
     if (plan != null && outputs != null && _target != null) {
-      final atStart = _progress <= 1e-6;
-      final atEnd = _progress >= 1 - 1e-6;
-      final nextTarget = atStart && _status != MeldIconStatus.running
+      final start = _progress.clamp(0, 1).toDouble();
+      final atStart = start <= 1e-6;
+      final atEnd = start >= 1 - 1e-6;
+      final end = atStart && _status != MeldIconStatus.running
           ? 1.0
           : atEnd && _status != MeldIconStatus.running
               ? 0.0
@@ -416,15 +420,20 @@ final class MeldIconController extends ChangeNotifier {
       final config =
           spring ?? (preset == null ? _spring.config : springPreset(preset));
       _spring.configure(config);
+      _prepareReversePaintStyles();
+      // The spring itself lives in the same normalized coordinate as the
+      // geometry plan. Preserve the exact visible position and reverse the
+      // velocity sign so the first effective frame travels immediately in
+      // the opposite direction without restarting the spring phase.
+      _spring.position = start;
       if (_motionDisabled) {
-        _prepareReversePaintStyles();
-        _spring.retarget(nextTarget);
+        _spring.retarget(end, inheritedVelocity: 0);
         _finishAtSpringTarget();
         return Future.value(
             const MeldTransitionResult(MeldTransitionEnd.completed));
       }
-      _prepareReversePaintStyles();
-      _spring.retarget(nextTarget);
+      _spring.retarget(end, inheritedVelocity: -_velocity);
+      _velocity = _spring.velocity;
       final transition = _transition ??= Completer<MeldTransitionResult>();
       final future = transition.future;
       _status = MeldIconStatus.running;
@@ -516,7 +525,7 @@ final class MeldIconController extends ChangeNotifier {
     final dt =
         previous == null ? 0.0 : (elapsed - previous).inMicroseconds / 1000000;
     final settled = _spring.step(dt);
-    _progress = _spring.position;
+    _progress = _spring.position.clamp(0, 1).toDouble();
     _velocity = _spring.velocity;
     final plan = _plan;
     final outputs = _outputs;
@@ -577,7 +586,8 @@ final class MeldIconController extends ChangeNotifier {
   }
 
   void _finishAtSpringTarget() {
-    final movingForward = _spring.target == 1;
+    final movingForward = _spring.target >= 1 - 1e-6;
+    final target = _spring.target;
     final destination = movingForward ? _target : _planStartSource ?? _current;
     if (movingForward) {
       if (_planStartSource != null) _previousSource = _planStartSource;
@@ -595,7 +605,10 @@ final class MeldIconController extends ChangeNotifier {
         _targetPaths = _currentPaths;
       }
     }
-    _progress = _spring.target;
+    _spring.position = target;
+    _spring.velocity = 0;
+    _spring.running = false;
+    _progress = target;
     _velocity = 0;
     _status = MeldIconStatus.completed;
     _completePrevious(MeldTransitionEnd.completed);

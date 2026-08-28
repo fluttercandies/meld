@@ -44,7 +44,7 @@ void main() {
     expect(spring.velocity, closeTo(0, 0.02));
   });
 
-  test('spring reverses its target without resetting position or velocity', () {
+  test('spring reverses direction without resetting position', () {
     final spring = MeldSpring(springPreset(SpringPreset.snappy));
     spring.start();
     spring.step(0.12);
@@ -55,7 +55,7 @@ void main() {
 
     expect(spring.target, 0);
     expect(spring.position, position);
-    expect(spring.velocity, velocity);
+    expect(spring.velocity, closeTo(-velocity, 1e-9));
     var settled = false;
     for (var i = 0; i < 600 && !settled; i++) {
       settled = spring.step(1 / 60);

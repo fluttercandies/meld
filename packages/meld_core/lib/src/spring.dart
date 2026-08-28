@@ -41,9 +41,15 @@ final class MeldSpring {
     running = true;
   }
 
-  /// Toggles the destination between the two normalized endpoints.
+  /// Toggles the destination and immediately changes the travel direction.
+  ///
+  /// The current speed is preserved as a magnitude, while its sign is flipped
+  /// so a reverse never spends frames carrying momentum toward the old target.
   void reverse({double? inheritedVelocity}) {
-    retarget(target == 1 ? 0 : 1, inheritedVelocity: inheritedVelocity);
+    retarget(
+      target == 1 ? 0 : 1,
+      inheritedVelocity: inheritedVelocity ?? -velocity,
+    );
   }
 
   void stop() {
