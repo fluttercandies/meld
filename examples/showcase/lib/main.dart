@@ -183,7 +183,7 @@ const _svgOptions = <_IconOption>[
     name: 'Ring',
     family: _SourceFamily.svg,
     source: SvgMarkupSource(
-      '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/></svg>',
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/></svg>',
     ),
   ),
   _IconOption(
@@ -191,7 +191,7 @@ const _svgOptions = <_IconOption>[
     name: 'Rounded square',
     family: _SourceFamily.svg,
     source: SvgMarkupSource(
-      '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/></svg>',
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="4" y="4" width="16" height="16" rx="4"/></svg>',
     ),
   ),
   _IconOption(
@@ -199,7 +199,7 @@ const _svgOptions = <_IconOption>[
     name: 'Chevron',
     family: _SourceFamily.svg,
     source: SvgMarkupSource(
-      '<svg viewBox="0 0 24 24"><polyline points="8,4 16,12 8,20"/></svg>',
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="8,4 16,12 8,20"/></svg>',
     ),
   ),
   _IconOption(
@@ -207,7 +207,7 @@ const _svgOptions = <_IconOption>[
     name: 'Badge',
     family: _SourceFamily.svg,
     source: SvgMarkupSource(
-      '<svg viewBox="0 0 24 24"><polygon points="12,3 21,12 12,21 3,12"/></svg>',
+      '<svg viewBox="0 0 24 24" fill="currentColor"><polygon points="12,3 21,12 12,21 3,12"/></svg>',
     ),
   ),
   _IconOption(
@@ -215,7 +215,7 @@ const _svgOptions = <_IconOption>[
     name: 'Crosshair',
     family: _SourceFamily.svg,
     source: SvgMarkupSource(
-      '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>',
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="6"/><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>',
     ),
   ),
   _IconOption(
@@ -223,7 +223,7 @@ const _svgOptions = <_IconOption>[
     name: 'Spark',
     family: _SourceFamily.svg,
     source: SvgMarkupSource(
-      '<svg viewBox="0 0 24 24"><path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5Z"/></svg>',
+      '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5Z"/></svg>',
     ),
   ),
 ];

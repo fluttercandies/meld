@@ -70,6 +70,49 @@ void main() {
         values.every((value) => value >= -1e-9 && value <= 24 + 1e-9), isTrue);
   });
 
+  test('retains the source paint intent for Original rendering', () {
+    const pathFill = PathDataSource(
+      'M4 4H20V20H4Z',
+      paintStyle: MeldSourcePaintStyle.fill,
+    );
+    expect(pathFill.paintStyle, MeldSourcePaintStyle.fill);
+    expect(
+      fitViewBox(pathFill, const MeldViewBox(0, 0, 24, 24)).paintStyle,
+      MeldSourcePaintStyle.fill,
+    );
+    expect(
+      SvgMarkupSource(
+        '<svg viewBox="0 0 24 24"><path d="M4 4H20V20H4Z" fill="none" stroke="currentColor"/></svg>',
+      ).paintStyle,
+      MeldSourcePaintStyle.outline,
+    );
+    expect(
+      SvgMarkupSource(
+        '<svg viewBox="0 0 24 24"><path d="M4 4H20V20H4Z" fill="currentColor" stroke="currentColor"/></svg>',
+      ).paintStyle,
+      MeldSourcePaintStyle.both,
+    );
+    expect(
+      SvgMarkupSource(
+        '<svg viewBox="0 0 24 24"><path style="fill:none;stroke:#fff" d="M4 4H20V20H4Z"/></svg>',
+      ).paintStyle,
+      MeldSourcePaintStyle.outline,
+    );
+    expect(
+      SvgMarkupSource(
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 4H20V20H4Z"/></svg>',
+      ).paintStyle,
+      MeldSourcePaintStyle.outline,
+    );
+    expect(
+      SvgMarkupSource(
+        '<svg viewBox="0 0 24 24"><path d="M4 4H20V20H4Z" fill="none" stroke="currentColor"/></svg>',
+        paintStyle: MeldSourcePaintStyle.fill,
+      ).paintStyle,
+      MeldSourcePaintStyle.fill,
+    );
+  });
+
   test('serializes and restores a plan without changing its flight', () {
     final plan = MeldEngine().plan(menu, close);
     final restored = MeldPlan.fromJson(plan.toJson());

@@ -63,7 +63,7 @@ void main() {
     controller.dispose();
   });
 
-  test('original preserves outline sources and fills filled sources', () async {
+  test('original preserves each source declared paint style', () async {
     final outlineController = MeldIconController(
         initialSource: const PathDataSource('M4 4H20V20H4Z'));
     final outlineRecorder = ui.PictureRecorder();
@@ -138,6 +138,32 @@ void main() {
         await filledImage.toByteData(format: ui.ImageByteFormat.rawRgba);
     expect(filledBytes!.getUint8((12 * 24 + 12) * 4 + 3), 255);
     filledController.dispose();
+
+    final explicitFillController = MeldIconController(
+      initialSource: const PathDataSource(
+        'M4 4H20V20H4Z',
+        paintStyle: MeldSourcePaintStyle.fill,
+      ),
+    );
+    final explicitFillRecorder = ui.PictureRecorder();
+    final explicitFillPainter = MeldIconPainter(
+      controller: explicitFillController,
+      viewBox: const MeldViewBox(0, 0, 24, 24),
+      color: Colors.white,
+      strokeWidth: 1,
+      strokeCap: ui.StrokeCap.square,
+      strokeJoin: ui.StrokeJoin.miter,
+      antiAlias: false,
+      paintStyle: MeldPaintStyle.original,
+    );
+    explicitFillPainter.paint(
+        ui.Canvas(explicitFillRecorder), const Size(24, 24));
+    final explicitFillImage =
+        await explicitFillRecorder.endRecording().toImage(24, 24);
+    final explicitFillBytes =
+        await explicitFillImage.toByteData(format: ui.ImageByteFormat.rawRgba);
+    expect(explicitFillBytes!.getUint8((12 * 24 + 12) * 4 + 3), 255);
+    explicitFillController.dispose();
   });
 
   test('original keeps open contours visible with a stroke fallback', () async {
@@ -160,6 +186,40 @@ void main() {
     final centerAlpha = bytes!.getUint8((12 * 24 + 12) * 4 + 3);
 
     expect(centerAlpha, 255);
+    controller.dispose();
+  });
+
+  test('original continuously transitions between source paint intents',
+      () async {
+    const geometry = 'M4 4H20V20H4Z';
+    const outline = PathDataSource(
+      geometry,
+      paintStyle: MeldSourcePaintStyle.outline,
+    );
+    const fill = PathDataSource(
+      geometry,
+      paintStyle: MeldSourcePaintStyle.fill,
+    );
+    final controller = MeldIconController(initialSource: outline)
+      ..seek(fill, 0.5);
+    final recorder = ui.PictureRecorder();
+    final painter = MeldIconPainter(
+      controller: controller,
+      viewBox: const MeldViewBox(0, 0, 24, 24),
+      color: Colors.white,
+      strokeWidth: 1,
+      strokeCap: ui.StrokeCap.square,
+      strokeJoin: ui.StrokeJoin.miter,
+      antiAlias: false,
+      paintStyle: MeldPaintStyle.original,
+    );
+
+    painter.paint(ui.Canvas(recorder), const Size(24, 24));
+    final image = await recorder.endRecording().toImage(24, 24);
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    final centerAlpha = bytes!.getUint8((12 * 24 + 12) * 4 + 3);
+
+    expect(centerAlpha, closeTo(128, 1));
     controller.dispose();
   });
 

@@ -23,6 +23,11 @@ interpolatePlan(plan, 0.5, frame);
 
 The engine handles SVG commands and primitives, viewBox fitting, arc-length sampling, subpath matching, topology-aware alignment, similarity transforms, spring stepping, bounded caches, diagnostics, and JSON plan serialization. Endpoint frames remain canonical while flight frames use reusable typed buffers.
 
+Sources carry the paint intent used by Flutter's `MeldPaintStyle.original`:
+`PathDataSource`, `GeometrySource`, and `CubicSource` accept explicit
+`MeldSourcePaintStyle` values, while `SvgMarkupSource` derives `fill`,
+`stroke`, or `both` from inline SVG paint attributes unless overridden.
+
 ## Links
 
 - [Meld guide](https://github.com/fluttercandies/meld#physics-quality-and-observability)

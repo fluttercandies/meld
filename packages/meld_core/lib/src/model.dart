@@ -33,37 +33,68 @@ enum MeldSourcePaintStyle {
 
   /// The source is normally rendered as a filled compound contour.
   fill,
+
+  /// The source is rendered with both a fill and a contour stroke.
+  both,
 }
 
 sealed class MeldSource {
-  const MeldSource({this.paintStyle = MeldSourcePaintStyle.outline});
+  const MeldSource();
 
-  final MeldSourcePaintStyle paintStyle;
+  /// The source's own rendering intent used by `MeldPaintStyle.original`.
+  MeldSourcePaintStyle get paintStyle;
 }
 
 /// Raw SVG `d` data. The parser accepts all SVG path commands supported by
 /// Meld and preserves the original text for canonical endpoint rendering.
+/// Because `d` does not contain paint attributes, [paintStyle] is explicit
+/// and defaults to an outline source.
 final class PathDataSource extends MeldSource {
-  const PathDataSource(this.d);
+  const PathDataSource(
+    this.d, {
+    this.paintStyle = MeldSourcePaintStyle.outline,
+  }) : super();
 
   final String d;
+  @override
+  final MeldSourcePaintStyle paintStyle;
 }
 
-/// SVG markup source. The markup parser accepts stroke-centered geometry only.
+/// SVG markup source.
+///
+/// When [paintStyle] is omitted, the source style is inferred from the
+/// drawable elements' inline `fill`, `stroke` and `style` attributes. The
+/// inference follows SVG's monochrome defaults (filled unless a stroke-only
+/// declaration is present) and returns [MeldSourcePaintStyle.both] when both
+/// operations are present. Pass [paintStyle] when the visual style is supplied
+/// by external CSS that is not embedded in [markup].
 final class SvgMarkupSource extends MeldSource {
-  const SvgMarkupSource(this.markup);
+  const SvgMarkupSource(this.markup, {MeldSourcePaintStyle? paintStyle})
+      : _paintStyle = paintStyle,
+        super();
 
   final String markup;
+  @override
+  MeldSourcePaintStyle get paintStyle =>
+      _paintStyle ?? _inferSvgPaintStyle(markup);
+
+  final MeldSourcePaintStyle? _paintStyle;
 }
 
 /// Structured SVG geometry. Attributes are immutable and intentionally mirror
-/// the small, portable subset used by icon packages.
+/// the small, portable subset used by icon packages. [paintStyle] is explicit
+/// because the node model does not carry a CSS cascade.
 final class GeometrySource extends MeldSource {
-  GeometrySource(Iterable<GeometryNode> nodes, {this.viewBox})
-      : nodes = List<GeometryNode>.unmodifiable(nodes);
+  GeometrySource(
+    Iterable<GeometryNode> nodes, {
+    this.viewBox,
+    this.paintStyle = MeldSourcePaintStyle.outline,
+  }) : nodes = List<GeometryNode>.unmodifiable(nodes);
 
   final List<GeometryNode> nodes;
   final MeldViewBox? viewBox;
+  @override
+  final MeldSourcePaintStyle paintStyle;
 }
 
 /// A normalized cubic source, useful for font adapters and precomputed assets.
@@ -74,11 +105,112 @@ final class CubicSource extends MeldSource {
     Iterable<CubicPath> paths, {
     this.paintStyle = MeldSourcePaintStyle.outline,
   })  : paths = List<CubicPath>.unmodifiable(paths),
-        super(paintStyle: paintStyle);
+        super();
 
   final List<CubicPath> paths;
   @override
   final MeldSourcePaintStyle paintStyle;
+}
+
+MeldSourcePaintStyle _inferSvgPaintStyle(String markup) {
+  final body = markup.replaceAll(
+    RegExp(r'<(defs|mask|clippath|symbol)\b[^>]*>[\s\S]*?<\/\1>',
+        caseSensitive: false),
+    '',
+  );
+  const drawableTags = <String>{
+    'path',
+    'line',
+    'circle',
+    'ellipse',
+    'rect',
+    'polyline',
+    'polygon',
+  };
+  final tags = RegExp(r'<([a-zA-Z][\w:-]*)([^>]*)\/?\s*>');
+  final root = RegExp(r'<svg\b([^>]*)>', caseSensitive: false).firstMatch(body);
+  final inherited = root == null
+      ? const <String, String>{}
+      : _parseInlineSvgPaint(root.group(1)!);
+  var hasFill = false;
+  var hasStroke = false;
+  for (final match in tags.allMatches(body)) {
+    final tag = match.group(1)!.toLowerCase();
+    if (!drawableTags.contains(tag)) continue;
+    final attributes = _parseInlineSvgPaint(match.group(2)!);
+    final fill = attributes['fill'] ?? inherited['fill'] ?? 'black';
+    final stroke = attributes['stroke'] ?? inherited['stroke'] ?? 'none';
+    final opacity = attributes['opacity'] ?? inherited['opacity'];
+    final fillOpacity = attributes['fill-opacity'] ?? inherited['fill-opacity'];
+    final strokeOpacity =
+        attributes['stroke-opacity'] ?? inherited['stroke-opacity'];
+    final strokeWidth = attributes['stroke-width'] ?? inherited['stroke-width'];
+    if (_isVisibleSvgPaint(fill, opacity, fillOpacity)) hasFill = true;
+    if (_isVisibleSvgPaint(stroke, opacity, strokeOpacity, strokeWidth)) {
+      hasStroke = true;
+    }
+  }
+  if (hasStroke && hasFill) return MeldSourcePaintStyle.both;
+  if (hasStroke) return MeldSourcePaintStyle.outline;
+  return MeldSourcePaintStyle.fill;
+}
+
+Map<String, String> _parseInlineSvgPaint(String raw) {
+  final attributes = <String, String>{};
+  final style = <String, String>{};
+  final expression = RegExp(r'''([\w:-]+)\s*=\s*(["'])(.*?)\2''');
+  for (final match in expression.allMatches(raw)) {
+    final key = match.group(1)!.toLowerCase();
+    final value = match.group(3)!.trim();
+    if (key == 'style') {
+      for (final declaration in value.split(';')) {
+        final separator = declaration.indexOf(':');
+        if (separator <= 0) continue;
+        style[declaration.substring(0, separator).trim().toLowerCase()] =
+            declaration.substring(separator + 1).trim();
+      }
+    } else if (const <String>{
+      'fill',
+      'stroke',
+      'opacity',
+      'fill-opacity',
+      'stroke-opacity',
+      'stroke-width',
+    }.contains(key)) {
+      attributes[key] = value;
+    }
+  }
+  attributes.addAll(style);
+  return attributes;
+}
+
+bool _isVisibleSvgPaint(
+  String value,
+  String? opacity,
+  String? channelOpacity, [
+  String? width,
+]) {
+  final normalized = value.trim().toLowerCase();
+  return normalized.isNotEmpty &&
+      normalized != 'none' &&
+      normalized != 'transparent' &&
+      normalized != '0' &&
+      normalized != '0%' &&
+      !_isZeroSvgNumber(opacity) &&
+      !_isZeroSvgNumber(channelOpacity) &&
+      !_isZeroSvgNumber(width);
+}
+
+bool _isZeroSvgNumber(String? value) {
+  if (value == null) return false;
+  final normalized = value.trim().toLowerCase();
+  if (normalized.endsWith('%')) {
+    return double.tryParse(
+          normalized.substring(0, normalized.length - 1),
+        ) ==
+        0;
+  }
+  return double.tryParse(normalized) == 0;
 }
 
 typedef MeldIconSource = MeldSource;

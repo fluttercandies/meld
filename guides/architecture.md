@@ -38,6 +38,9 @@ surrounding widget subtree.
 7. Advance the deterministic spring and repaint reusable output buffers.
 
 The font adapter follows the same source contract. It reads caller-owned static
-TrueType bytes, resolves `cmap`, expands `glyf` composites, and converts
-quadratic contours to cubic paths. Unsupported outline semantics fail with a
-diagnostic instead of silently producing a different shape.
+TrueType bytes, resolves `cmap`, expands `glyf` composites, converts quadratic
+contours to cubic paths, and marks the result as a filled source. Geometry-only
+sources declare their paint intent explicitly; SVG markup derives it from
+inline `fill`, `stroke`, and basic `style` declarations. Unsupported outline
+semantics fail with a diagnostic instead of silently producing a different
+shape.

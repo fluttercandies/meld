@@ -60,7 +60,7 @@ controller.seek(MenuButton.close, 0.72);
 await controller.playSequence([MenuButton.menu, MenuButton.close]);
 ```
 
-使用 `MeldIconTheme` 统一视觉语言。`MeldPaintStyle.outline` 始终绘制几何轮廓，`original` 保留输入源的原始意图（线性图标保持轮廓，字体 glyph 保持填充），`both` 会先填充闭合轮廓再描边。
+使用 `MeldIconTheme` 统一视觉语言。`MeldPaintStyle.outline` 始终绘制几何轮廓，`original` 保留输入源声明或解析出的真实绘制意图，`both` 会先填充闭合轮廓再描边。几何源可以显式声明 `MeldSourcePaintStyle.fill`、`.outline` 或 `.both`；未显式覆盖时，SVG markup 会从内联 `fill`/`stroke` 属性推导原始样式。
 
 ## 输入格式
 

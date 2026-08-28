@@ -8,9 +8,11 @@ scientific notation.
 
 ## Filled SVG or glyphs look hollow
 
-Use `MeldPaintStyle.original` for source-faithful output, or `MeldPaintStyle.both`
-when a filled glyph also needs an outline. The explicit `outline` mode remains
-available for line icons and inspection.
+Use `MeldPaintStyle.original` for source-faithful output. Geometry-only sources
+should set `paintStyle` explicitly; SVG markup derives it from inline `fill`,
+`stroke`, and basic `style` declarations. Use `MeldPaintStyle.both` when a
+filled contour also needs an outline regardless of the source intent. The
+explicit `outline` mode remains available for inspection.
 
 ## `unsupported-element` or `unsupported-transform`
 

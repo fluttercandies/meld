@@ -60,7 +60,7 @@ controller.seek(MenuButton.close, 0.72);
 await controller.playSequence([MenuButton.menu, MenuButton.close]);
 ```
 
-Use `MeldIconTheme` for a shared visual language. `MeldPaintStyle.outline` always draws the geometry outline, `original` preserves the source intent (line sources stay outlined and font glyphs stay filled), and `both` fills closed contours before adding an outline.
+Use `MeldIconTheme` for a shared visual language. `MeldPaintStyle.outline` always draws the geometry outline, `original` preserves the source's declared or parsed paint intent, and `both` fills closed contours before adding an outline. Geometry-only sources can declare `MeldSourcePaintStyle.fill`, `.outline`, or `.both`; SVG markup derives the intent from inline `fill`/`stroke` attributes when no override is supplied.
 
 ## Inputs
 

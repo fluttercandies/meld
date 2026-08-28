@@ -18,7 +18,7 @@ final controller = MeldIconController(initialSource: from);
 await controller.morphTo(to, preset: SpringPreset.snappy);
 ```
 
-The widget supports declarative, controlled-progress, and command-driven modes; `MeldIconTheme` supplies shared paint tokens; `MeldPaintStyle` supports outline, source-faithful original rendering, and combined fill-plus-outline rendering; and `MeldMotionMode.user` follows Flutter reduced-motion settings. Add a `label` for semantics or set `excludeFromSemantics` for decorative icons.
+The widget supports declarative, controlled-progress, and command-driven modes; `MeldIconTheme` supplies shared paint tokens; `MeldPaintStyle` supports explicit outlines, source-faithful original rendering, and combined fill-plus-outline rendering; and `MeldMotionMode.user` follows Flutter reduced-motion settings. Add a `label` for semantics or set `excludeFromSemantics` for decorative icons.
 
 ## Links
 

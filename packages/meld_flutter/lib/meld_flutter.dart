@@ -38,8 +38,9 @@ enum MeldPaintStyle {
   /// Draws contour edges without filling their interiors.
   outline,
 
-  /// Preserves the source's declared visual intent. Path and SVG sources use
-  /// outlines, while font glyph sources use filled compound contours.
+  /// Preserves the source's declared or parsed visual intent, including
+  /// fill-plus-outline sources. Geometry-only sources use their constructor's
+  /// explicit style; SVG markup derives one from inline paint attributes.
   original,
 
   /// Fills compound contours first, then draws their edges.
@@ -158,7 +159,11 @@ final class MeldIconController extends ChangeNotifier {
   MeldIconController({MeldEngine? engine, MeldSource? initialSource})
       : engine = engine ?? MeldEngine(),
         _current = initialSource {
-    if (initialSource != null) _validateSource(initialSource);
+    if (initialSource != null) {
+      _validateSource(initialSource);
+      _currentPaintStyle = initialSource.paintStyle;
+      _targetPaintStyle = _currentPaintStyle;
+    }
   }
 
   final MeldEngine engine;
@@ -178,6 +183,8 @@ final class MeldIconController extends ChangeNotifier {
   MeldException? _lastError;
   double _progress = 1;
   double _velocity = 0;
+  MeldSourcePaintStyle _currentPaintStyle = MeldSourcePaintStyle.outline;
+  MeldSourcePaintStyle _targetPaintStyle = MeldSourcePaintStyle.outline;
   MeldMotionMode motionMode = MeldMotionMode.user;
   MeldInterpolationStrategy interpolation = MeldInterpolationStrategy.polar;
   bool userAnimationsDisabled = false;
@@ -185,10 +192,8 @@ final class MeldIconController extends ChangeNotifier {
   MeldIconStatus get status => _status;
   MeldSource? get currentSource => _current;
   MeldSource? get target => _target ?? _current;
-  MeldSourcePaintStyle get currentPaintStyle =>
-      _current?.paintStyle ?? MeldSourcePaintStyle.outline;
-  MeldSourcePaintStyle get targetPaintStyle =>
-      (_target ?? _current)?.paintStyle ?? MeldSourcePaintStyle.outline;
+  MeldSourcePaintStyle get currentPaintStyle => _currentPaintStyle;
+  MeldSourcePaintStyle get targetPaintStyle => _targetPaintStyle;
   double get progress => _progress;
   double get velocity => _velocity;
   MeldException? get lastError => _lastError;
@@ -270,6 +275,7 @@ final class MeldIconController extends ChangeNotifier {
       _outputs = allocateOutputs(_plan!);
       _closed = <bool>[for (final item in _plan!.items) item.closed];
       _target = source;
+      _targetPaintStyle = source.paintStyle;
       _targetPathsSource = source;
       _targetPaths = iconToCubics(source);
       final inheritedVelocity = _velocity;
@@ -300,6 +306,8 @@ final class MeldIconController extends ChangeNotifier {
     _completePrevious(MeldTransitionEnd.cancelled);
     try {
       _current = source;
+      _currentPaintStyle = source.paintStyle;
+      _targetPaintStyle = _currentPaintStyle;
       _currentPaths = iconToCubics(source);
       _target = source;
       _targetPathsSource = source;
@@ -323,6 +331,7 @@ final class MeldIconController extends ChangeNotifier {
     try {
       _validateSource(source);
       final base = _current ?? source;
+      if (_current == null) _currentPaintStyle = base.paintStyle;
       final targetChanged = _target == null ||
           canonicalPathData(_target!) != canonicalPathData(source);
       if (_plan == null || targetChanged) _plan = engine.plan(base, source);
@@ -330,6 +339,7 @@ final class MeldIconController extends ChangeNotifier {
       _closed ??= <bool>[for (final item in _plan!.items) item.closed];
       interpolatePlan(_plan!, t, _outputs!, strategy: interpolation);
       _target = source;
+      _targetPaintStyle = source.paintStyle;
       _targetPathsSource = source;
       _targetPaths = iconToCubics(source);
       _progress = t;
@@ -414,7 +424,7 @@ final class MeldIconController extends ChangeNotifier {
       }
       paths.add(CubicPath(Float64List.fromList(cubic), closed: closed[p]));
     }
-    return CubicSource(paths);
+    return CubicSource(paths, paintStyle: currentPaintStyle);
   }
 
   void _onTick(Duration elapsed) {
@@ -434,8 +444,10 @@ final class MeldIconController extends ChangeNotifier {
     if (settled) {
       _stopTicker();
       final destination = _target;
-      if (destination != null) _current = destination;
       if (destination != null) {
+        _current = destination;
+        _currentPaintStyle = destination.paintStyle;
+        _targetPaintStyle = _currentPaintStyle;
         _currentPaths = iconToCubics(destination);
         _targetPathsSource = destination;
         _targetPaths = _currentPaths;
@@ -498,6 +510,8 @@ final class MeldIconController extends ChangeNotifier {
     final destination = _target;
     if (destination != null) {
       _current = destination;
+      _currentPaintStyle = destination.paintStyle;
+      _targetPaintStyle = _currentPaintStyle;
       _currentPaths = iconToCubics(destination);
       _targetPathsSource = destination;
       _targetPaths = _currentPaths;
@@ -612,7 +626,6 @@ final class MeldIconPainter extends CustomPainter {
           closedPath,
           openPath,
           hasOpenContours,
-          paint,
         );
       case MeldPaintStyle.both:
         final fill = _paint(ui.PaintingStyle.fill);
@@ -627,25 +640,12 @@ final class MeldIconPainter extends CustomPainter {
     ui.Path closedPath,
     ui.Path openPath,
     bool hasOpenContours,
-    ui.Paint paint,
   ) {
-    final currentIsFill =
-        controller.currentPaintStyle == MeldSourcePaintStyle.fill;
-    final targetIsFill =
-        controller.targetPaintStyle == MeldSourcePaintStyle.fill;
     final progress = controller.progress.clamp(0, 1).toDouble();
-    if (currentIsFill == targetIsFill) {
-      if (currentIsFill) {
-        canvas.drawPath(closedPath, _paint(ui.PaintingStyle.fill));
-        if (hasOpenContours) canvas.drawPath(openPath, paint);
-      } else {
-        canvas.drawPath(allPath, paint);
-      }
-      return;
-    }
-
-    final fillOpacity = targetIsFill ? progress : 1 - progress;
-    final strokeOpacity = 1 - fillOpacity;
+    final current = _sourcePaintWeights(controller.currentPaintStyle);
+    final target = _sourcePaintWeights(controller.targetPaintStyle);
+    final fillOpacity = _lerp(current.fill, target.fill, progress);
+    final strokeOpacity = _lerp(current.stroke, target.stroke, progress);
     if (fillOpacity > 1e-6) {
       canvas.drawPath(
         closedPath,
@@ -658,8 +658,25 @@ final class MeldIconPainter extends CustomPainter {
         _paint(ui.PaintingStyle.stroke, opacity: strokeOpacity),
       );
     }
-    if (hasOpenContours) canvas.drawPath(openPath, paint);
+    if (hasOpenContours && strokeOpacity <= 1e-6 && fillOpacity > 1e-6) {
+      canvas.drawPath(
+        openPath,
+        _paint(ui.PaintingStyle.stroke, opacity: fillOpacity),
+      );
+    }
   }
+
+  ({double fill, double stroke}) _sourcePaintWeights(
+      MeldSourcePaintStyle style) {
+    return switch (style) {
+      MeldSourcePaintStyle.outline => (fill: 0, stroke: 1),
+      MeldSourcePaintStyle.fill => (fill: 1, stroke: 0),
+      MeldSourcePaintStyle.both => (fill: 1, stroke: 1),
+    };
+  }
+
+  double _lerp(double start, double end, double value) =>
+      start + (end - start) * value;
 
   ui.Paint _paint(ui.PaintingStyle style, {double opacity = 1}) {
     return ui.Paint()
