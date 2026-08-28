@@ -173,6 +173,7 @@ final class MeldIconController extends ChangeNotifier {
   MeldSource? _planStartSource;
   MeldPlan? _plan;
   List<Float64List>? _outputs;
+  List<Float64List>? _outputViews;
   List<bool>? _closed;
   List<CubicPath>? _currentPaths;
   List<CubicPath>? _targetPaths;
@@ -202,12 +203,13 @@ final class MeldIconController extends ChangeNotifier {
   double get velocity => _velocity;
   MeldException? get lastError => _lastError;
   bool get isAnimating => _status == MeldIconStatus.running;
-  List<Float64List>? get flightPaths => _outputs;
+  List<Float64List>? get flightPaths => _outputViews;
   List<bool>? get closedPaths => _closed;
   PlanDiagnostics? get diagnostics => _plan?.diagnostics;
   List<CubicPath>? get currentPaths {
-    if (_currentPaths == null && _current != null)
-      _currentPaths = iconToCubics(_current!);
+    if (_currentPaths == null && _current != null) {
+      _currentPaths = List<CubicPath>.unmodifiable(iconToCubics(_current!));
+    }
     return _currentPaths;
   }
 
@@ -233,7 +235,7 @@ final class MeldIconController extends ChangeNotifier {
     if (source == null) return null;
     if (!identical(_targetPathsSource, source)) {
       _targetPathsSource = source;
-      _targetPaths = iconToCubics(source);
+      _targetPaths = List<CubicPath>.unmodifiable(iconToCubics(source));
     }
     return _targetPaths;
   }
@@ -290,11 +292,15 @@ final class MeldIconController extends ChangeNotifier {
       _planTargetPaintStyle = source.paintStyle;
       _plan = engine.plan(sourceForPlan, source);
       _outputs = allocateOutputs(_plan!);
-      _closed = <bool>[for (final item in _plan!.items) item.closed];
+      _outputViews = List<Float64List>.unmodifiable(
+          _outputs!.map((buffer) => buffer.asUnmodifiableView()));
+      interpolatePlan(_plan!, 0, _outputs!, strategy: interpolation);
+      _closed = List<bool>.unmodifiable(
+          [for (final item in _plan!.items) item.closed]);
       _target = source;
       _targetPaintStyle = source.paintStyle;
       _targetPathsSource = source;
-      _targetPaths = iconToCubics(source);
+      _targetPaths = List<CubicPath>.unmodifiable(iconToCubics(source));
       final inheritedVelocity = _velocity;
       _spring = MeldSpring(config)..start(inheritedVelocity: inheritedVelocity);
       _progress = 0;
@@ -327,12 +333,13 @@ final class MeldIconController extends ChangeNotifier {
       _planStartSource = null;
       _currentPaintStyle = source.paintStyle;
       _targetPaintStyle = _currentPaintStyle;
-      _currentPaths = iconToCubics(source);
+      _currentPaths = List<CubicPath>.unmodifiable(iconToCubics(source));
       _target = source;
       _targetPathsSource = source;
       _targetPaths = _currentPaths;
       _plan = null;
       _outputs = null;
+      _outputViews = null;
       _closed = null;
       _progress = 1;
       _velocity = 0;
@@ -346,27 +353,34 @@ final class MeldIconController extends ChangeNotifier {
 
   void seek(MeldSource source, double value) {
     _ensureAlive();
-    final t = value.clamp(0, 1).toDouble();
     try {
+      if (!value.isFinite) {
+        throw MeldException('invalid-progress', 'Progress must be finite.');
+      }
+      final t = value.clamp(0, 1).toDouble();
       _validateSource(source);
       final base = _current ?? source;
       if (_current == null) _currentPaintStyle = base.paintStyle;
       _previousSource ??= _current;
-      final targetChanged = _target == null ||
-          canonicalPathData(_target!) != canonicalPathData(source);
+      final targetChanged = _target == null || !_sameGeometry(_target!, source);
       if (_plan == null || targetChanged) {
         _plan = engine.plan(base, source);
         _planStartSource = base;
         _planStartPaintStyle = base.paintStyle;
       }
       _planTargetPaintStyle = source.paintStyle;
-      _outputs ??= allocateOutputs(_plan!);
-      _closed ??= <bool>[for (final item in _plan!.items) item.closed];
+      if (_outputs == null) {
+        _outputs = allocateOutputs(_plan!);
+        _outputViews = List<Float64List>.unmodifiable(
+            _outputs!.map((buffer) => buffer.asUnmodifiableView()));
+      }
+      _closed ??= List<bool>.unmodifiable(
+          [for (final item in _plan!.items) item.closed]);
       interpolatePlan(_plan!, t, _outputs!, strategy: interpolation);
       _target = source;
       _targetPaintStyle = source.paintStyle;
       _targetPathsSource = source;
-      _targetPaths = iconToCubics(source);
+      _targetPaths = List<CubicPath>.unmodifiable(iconToCubics(source));
       _progress = t;
       final endpoint = t >= 1 - 1e-6 ? source : _planStartSource ?? base;
       _current = endpoint;
@@ -437,7 +451,7 @@ final class MeldIconController extends ChangeNotifier {
       final config =
           spring ?? (preset == null ? _spring.config : springPreset(preset));
       _spring.configure(config);
-      _prepareReversePaintStyles();
+      _prepareReversePaintStyles(end);
       // The spring itself lives in the same normalized coordinate as the
       // geometry plan. Preserve the exact visible position and reverse the
       // velocity sign so the first effective frame travels immediately in
@@ -495,6 +509,7 @@ final class MeldIconController extends ChangeNotifier {
     _status = MeldIconStatus.disposed;
     _plan = null;
     _outputs = null;
+    _outputViews = null;
     _closed = null;
     _previousSource = null;
     _planStartSource = null;
@@ -541,7 +556,13 @@ final class MeldIconController extends ChangeNotifier {
     _lastTick = elapsed;
     final dt =
         previous == null ? 0.0 : (elapsed - previous).inMicroseconds / 1000000;
-    final settled = _spring.step(dt);
+    late final bool settled;
+    try {
+      settled = _spring.step(dt);
+    } on MeldException catch (error) {
+      _fail(error);
+      return;
+    }
     _progress = _spring.position.clamp(0, 1).toDouble();
     _velocity = _spring.velocity;
     final plan = _plan;
@@ -615,7 +636,7 @@ final class MeldIconController extends ChangeNotifier {
       _current = destination;
       _currentPaintStyle = destination.paintStyle;
       _targetPaintStyle = _currentPaintStyle;
-      _currentPaths = iconToCubics(destination);
+      _currentPaths = List<CubicPath>.unmodifiable(iconToCubics(destination));
       if (movingForward) {
         _target = destination;
         _targetPathsSource = destination;
@@ -632,15 +653,38 @@ final class MeldIconController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _prepareReversePaintStyles() {
-    _currentPaintStyle = _planStartPaintStyle;
-    _targetPaintStyle = _planTargetPaintStyle;
+  void _prepareReversePaintStyles(double target) {
+    if (target >= 1 - 1e-6) {
+      _currentPaintStyle = _planStartPaintStyle;
+      _targetPaintStyle = _planTargetPaintStyle;
+    } else {
+      _currentPaintStyle = _planTargetPaintStyle;
+      _targetPaintStyle = _planStartPaintStyle;
+    }
   }
 
   void _ensureAlive() {
     if (_status == MeldIconStatus.disposed)
       throw StateError('MeldIconController has been disposed.');
   }
+}
+
+bool _sameGeometry(MeldSource a, MeldSource b) {
+  final left = iconToCubics(a);
+  final right = iconToCubics(b);
+  if (left.length != right.length) return false;
+  for (var path = 0; path < left.length; path++) {
+    final aPath = left[path];
+    final bPath = right[path];
+    if (aPath.closed != bPath.closed ||
+        aPath.points.length != bPath.points.length) {
+      return false;
+    }
+    for (var i = 0; i < aPath.points.length; i++) {
+      if (aPath.points[i] != bPath.points[i]) return false;
+    }
+  }
+  return true;
 }
 
 final class MeldIconPainter extends CustomPainter {
@@ -653,7 +697,13 @@ final class MeldIconPainter extends CustomPainter {
     required this.strokeJoin,
     required this.antiAlias,
     required this.paintStyle,
-  }) : super(repaint: controller);
+  }) : super(repaint: controller) {
+    viewBox.validate();
+    if (!strokeWidth.isFinite || strokeWidth < 0) {
+      throw MeldException('invalid-stroke-width',
+          'Stroke width must be finite and non-negative.');
+    }
+  }
 
   final MeldIconController controller;
   final MeldViewBox viewBox;
@@ -754,8 +804,12 @@ final class MeldIconPainter extends CustomPainter {
     bool hasOpenContours,
   ) {
     final progress = controller.progress.clamp(0, 1).toDouble();
-    final current = _sourcePaintWeights(controller.currentPaintStyle);
-    final target = _sourcePaintWeights(controller.targetPaintStyle);
+    final current = _sourcePaintWeights(controller._plan == null
+        ? controller.currentPaintStyle
+        : controller._planStartPaintStyle);
+    final target = _sourcePaintWeights(controller._plan == null
+        ? controller.targetPaintStyle
+        : controller._planTargetPaintStyle);
     final fillOpacity = _lerp(current.fill, target.fill, progress);
     final strokeOpacity = _lerp(current.stroke, target.stroke, progress);
     if (fillOpacity > 1e-6) {
@@ -808,6 +862,7 @@ final class MeldIconPainter extends CustomPainter {
     double coordinate(int index, int axis) {
       if (close) {
         index %= count;
+        if (index < 0) index += count;
       } else {
         index = index.clamp(0, count - 1);
       }

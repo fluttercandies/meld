@@ -37,6 +37,31 @@ void main() {
     controller.dispose();
   });
 
+  test('controller exposes read-only flight buffers', () {
+    final controller = MeldIconController(initialSource: _line);
+    controller.seek(_cross, 0.5);
+
+    expect(controller.flightPaths, isNotNull);
+    expect(() => controller.flightPaths!.first[0] = 0, throwsUnsupportedError);
+    expect(() => controller.closedPaths![0] = true, throwsUnsupportedError);
+    controller.dispose();
+  });
+
+  test('new transitions expose their start geometry immediately', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    final controller = MeldIconController(initialSource: _line);
+    controller.attach(const TestVSync());
+    final transition = controller.morphTo(_cross);
+
+    expect(controller.flightPaths, isNotNull);
+    expect(controller.flightPaths!.first[0], closeTo(3, 1e-9));
+    expect(controller.flightPaths!.first[1], closeTo(12, 1e-9));
+
+    controller.detach();
+    expect((await transition).end, MeldTransitionEnd.cancelled);
+    controller.dispose();
+  });
+
   testWidgets('reverse works from running, paused, and completed states',
       (tester) async {
     final controller = MeldIconController(initialSource: _line)
@@ -85,6 +110,40 @@ void main() {
     expect((await completedBackward).end, MeldTransitionEnd.completed);
     expect(controller.currentSource, same(_line));
     expect(controller.progress, 1);
+    controller.dispose();
+  });
+
+  testWidgets('reverse swaps source paint semantics with geometry direction',
+      (tester) async {
+    const outline = PathDataSource(
+      'M4 4H20V20H4Z',
+      paintStyle: MeldSourcePaintStyle.outline,
+    );
+    const fill = PathDataSource(
+      'M4 4H20V20H4Z',
+      paintStyle: MeldSourcePaintStyle.fill,
+    );
+    final controller = MeldIconController(initialSource: outline)
+      ..motionMode = MeldMotionMode.always;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MeldIcon(controller: controller, label: 'Paint reverse'),
+      ),
+    );
+
+    final forward = controller.morphTo(
+      fill,
+      spring: const SpringConfig(stiffness: 80, damping: 10),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 16));
+    controller.pause();
+    final reverse = controller.reverse();
+    expect(controller.currentPaintStyle, MeldSourcePaintStyle.fill);
+    expect(controller.targetPaintStyle, MeldSourcePaintStyle.outline);
+    await tester.pumpAndSettle(const Duration(milliseconds: 16));
+    expect((await reverse).end, MeldTransitionEnd.completed);
+    expect((await forward).end, MeldTransitionEnd.completed);
     controller.dispose();
   });
 
@@ -291,6 +350,44 @@ void main() {
     final centerAlpha = bytes!.getUint8((12 * 24 + 12) * 4 + 3);
 
     expect(centerAlpha, closeTo(128, 1));
+    controller.dispose();
+  });
+
+  test('original preserves paint weight when reversing mid-transition',
+      () async {
+    const geometry = 'M4 4H20V20H4Z';
+    const outline = PathDataSource(
+      geometry,
+      paintStyle: MeldSourcePaintStyle.outline,
+    );
+    const fill = PathDataSource(
+      geometry,
+      paintStyle: MeldSourcePaintStyle.fill,
+    );
+    TestWidgetsFlutterBinding.ensureInitialized();
+    final controller = MeldIconController(initialSource: outline)
+      ..motionMode = MeldMotionMode.always;
+    controller.attach(const TestVSync());
+    controller.seek(fill, 0.8);
+    controller.reverse();
+
+    final recorder = ui.PictureRecorder();
+    final painter = MeldIconPainter(
+      controller: controller,
+      viewBox: const MeldViewBox(0, 0, 24, 24),
+      color: Colors.white,
+      strokeWidth: 1,
+      strokeCap: ui.StrokeCap.square,
+      strokeJoin: ui.StrokeJoin.miter,
+      antiAlias: false,
+      paintStyle: MeldPaintStyle.original,
+    );
+    painter.paint(ui.Canvas(recorder), const Size(24, 24));
+    final image = await recorder.endRecording().toImage(24, 24);
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+
+    expect(bytes!.getUint8((12 * 24 + 12) * 4 + 3), closeTo(204, 1));
+    controller.detach();
     controller.dispose();
   });
 

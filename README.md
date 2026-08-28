@@ -17,7 +17,7 @@ Meld turns one vector shape into another without the “rubber stamp” feeling 
 
 ```yaml
 dependencies:
-meld: ^1.0.0
+  meld: ^1.0.0
 ```
 
 ```dart

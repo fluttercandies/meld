@@ -1,5 +1,12 @@
 import 'dart:typed_data';
 
+/// Hard limits applied at public geometry boundaries.
+///
+/// The limits keep malformed or untrusted input from allocating unbounded
+/// buffers while leaving ample room for production icon assets.
+const int kMeldMaxCubicSegments = 16384;
+const int kMeldMaxSamplePoints = 4096;
+
 /// A structured failure from the parser, normalizer or planner.
 class MeldException extends FormatException {
   MeldException(
@@ -89,7 +96,7 @@ final class GeometrySource extends MeldSource {
     Iterable<GeometryNode> nodes, {
     this.viewBox,
     this.paintStyle = MeldSourcePaintStyle.outline,
-  }) : nodes = List<GeometryNode>.unmodifiable(nodes);
+  }) : nodes = _freezeGeometryNodes(nodes);
 
   final List<GeometryNode> nodes;
   final MeldViewBox? viewBox;
@@ -104,7 +111,7 @@ final class CubicSource extends MeldSource {
   CubicSource(
     Iterable<CubicPath> paths, {
     this.paintStyle = MeldSourcePaintStyle.outline,
-  })  : paths = List<CubicPath>.unmodifiable(paths),
+  })  : paths = _freezeCubicPaths(paths),
         super();
 
   final List<CubicPath> paths;
@@ -113,6 +120,10 @@ final class CubicSource extends MeldSource {
 }
 
 MeldSourcePaintStyle _inferSvgPaintStyle(String markup) {
+  if (markup.length > 1 << 20) {
+    throw MeldException(
+        'svg-limit', 'SVG markup exceeds the 1 MiB safety limit.');
+  }
   final body = markup.replaceAll(
     RegExp(r'<(defs|mask|clippath|symbol)\b[^>]*>[\s\S]*?<\/\1>',
         caseSensitive: false),
@@ -127,27 +138,40 @@ MeldSourcePaintStyle _inferSvgPaintStyle(String markup) {
     'polyline',
     'polygon',
   };
-  final tags = RegExp(r'<([a-zA-Z][\w:-]*)([^>]*)\/?\s*>');
-  final root = RegExp(r'<svg\b([^>]*)>', caseSensitive: false).firstMatch(body);
-  final inherited = root == null
-      ? const <String, String>{}
-      : _parseInlineSvgPaint(root.group(1)!);
+  final tags = RegExp(r'<(/?)([a-zA-Z][\w:-]*)([^>]*)>');
+  final inheritedStack = <Map<String, String>>[const <String, String>{}];
   var hasFill = false;
   var hasStroke = false;
   for (final match in tags.allMatches(body)) {
-    final tag = match.group(1)!.toLowerCase();
-    if (!drawableTags.contains(tag)) continue;
-    final attributes = _parseInlineSvgPaint(match.group(2)!);
-    final fill = attributes['fill'] ?? inherited['fill'] ?? 'black';
-    final stroke = attributes['stroke'] ?? inherited['stroke'] ?? 'none';
-    final opacity = attributes['opacity'] ?? inherited['opacity'];
-    final fillOpacity = attributes['fill-opacity'] ?? inherited['fill-opacity'];
-    final strokeOpacity =
-        attributes['stroke-opacity'] ?? inherited['stroke-opacity'];
-    final strokeWidth = attributes['stroke-width'] ?? inherited['stroke-width'];
+    final closing = match.group(1)!.isNotEmpty;
+    final tag = match.group(2)!.toLowerCase();
+    if (closing) {
+      if (inheritedStack.length > 1) inheritedStack.removeLast();
+      continue;
+    }
+    final effective = <String, String>{
+      ...inheritedStack.last,
+      ..._parseInlineSvgPaint(match.group(3)!),
+    };
+    if (!drawableTags.contains(tag)) {
+      if (!match.group(3)!.trimRight().endsWith('/')) {
+        inheritedStack.add(effective);
+      }
+      continue;
+    }
+    final fill = effective['fill'] ?? 'black';
+    final stroke = effective['stroke'] ?? 'none';
+    final opacity = effective['opacity'];
+    final fillOpacity = effective['fill-opacity'];
+    final strokeOpacity = effective['stroke-opacity'];
+    final strokeWidth = effective['stroke-width'];
     if (_isVisibleSvgPaint(fill, opacity, fillOpacity)) hasFill = true;
     if (_isVisibleSvgPaint(stroke, opacity, strokeOpacity, strokeWidth)) {
       hasStroke = true;
+    }
+    if (hasFill && hasStroke) return MeldSourcePaintStyle.both;
+    if (!match.group(3)!.trimRight().endsWith('/')) {
+      inheritedStack.add(effective);
     }
   }
   if (hasStroke && hasFill) return MeldSourcePaintStyle.both;
@@ -217,11 +241,68 @@ typedef MeldIconSource = MeldSource;
 
 final class GeometryNode {
   GeometryNode(String tag, Map<String, Object?> attributes)
-      : tag = tag.toLowerCase(),
-        attributes = Map<String, Object?>.unmodifiable(attributes);
+      : tag = _validateGeometryTag(tag),
+        attributes = _freezeAttributes(attributes);
 
   final String tag;
   final Map<String, Object?> attributes;
+}
+
+Map<String, Object?> _freezeAttributes(Map<String, Object?> input) {
+  return Map<String, Object?>.unmodifiable({
+    for (final entry in input.entries) entry.key: _freezeAttribute(entry.value),
+  });
+}
+
+Object? _freezeAttribute(Object? value) {
+  if (value is Map<String, Object?>) return _freezeAttributes(value);
+  if (value is List<Object?>) {
+    return List<Object?>.unmodifiable(value.map(_freezeAttribute));
+  }
+  if (value is List) {
+    return List<Object?>.unmodifiable(value.map(_freezeAttribute));
+  }
+  return value;
+}
+
+String _validateGeometryTag(String value) {
+  final normalized = value.trim().toLowerCase();
+  if (normalized.isEmpty) {
+    throw MeldException('invalid-geometry', 'Geometry tag must not be empty.');
+  }
+  return normalized;
+}
+
+List<GeometryNode> _freezeGeometryNodes(Iterable<GeometryNode> input) {
+  final output = <GeometryNode>[];
+  for (final node in input) {
+    if (output.length >= 512) {
+      throw MeldException(
+          'geometry-limit', 'An icon may contain at most 512 geometry nodes.');
+    }
+    output.add(node);
+  }
+  return List<GeometryNode>.unmodifiable(output);
+}
+
+List<CubicPath> _freezeCubicPaths(Iterable<CubicPath> input) {
+  final output = <CubicPath>[];
+  var segments = 0;
+  for (final path in input) {
+    if (output.length >= 512) {
+      throw MeldException(
+          'geometry-limit', 'An icon may contain at most 512 cubic paths.');
+    }
+    segments += path.segmentCount;
+    if (segments > kMeldMaxCubicSegments) {
+      throw MeldException(
+        'geometry-limit',
+        'An icon may contain at most $kMeldMaxCubicSegments cubic segments.',
+      );
+    }
+    output.add(path);
+  }
+  return List<CubicPath>.unmodifiable(output);
 }
 
 final class MeldViewBox {
@@ -243,17 +324,16 @@ final class MeldViewBox {
       throw MeldException(
           'invalid-view-box', 'viewBox contains a non-numeric value.');
     }
-    if (values.length != 4 ||
-        !values.every((value) => value.isFinite) ||
-        values[2] <= 0 ||
-        values[3] <= 0) {
+    if (values.length != 4) {
       throw MeldException(
         'invalid-view-box',
         'viewBox must contain four finite values with positive width and height',
         suggestion: 'Use "0 0 24 24" or [0, 0, 24, 24].',
       );
     }
-    return MeldViewBox(values[0], values[1], values[2], values[3]);
+    final result = MeldViewBox(values[0], values[1], values[2], values[3]);
+    result.validate();
+    return result;
   }
   const MeldViewBox(this.minX, this.minY, this.width, this.height);
 
@@ -261,6 +341,19 @@ final class MeldViewBox {
   final double minY;
   final double width;
   final double height;
+
+  /// Validates a viewBox created through the const constructor.
+  void validate() {
+    if (![minX, minY, width, height].every((value) => value.isFinite) ||
+        width <= 0 ||
+        height <= 0) {
+      throw MeldException(
+        'invalid-view-box',
+        'viewBox must contain finite values and positive width and height.',
+        suggestion: 'Use a finite viewBox such as "0 0 24 24".',
+      );
+    }
+  }
 
   @override
   bool operator ==(Object other) =>
@@ -277,7 +370,12 @@ final class MeldViewBox {
 /// Cubic path points are packed as x/y pairs: p0, c1, c2, p1, ...
 final class CubicPath {
   CubicPath(Float64List points, {required this.closed})
-      : points = Float64List.fromList(points);
+      : points = _freezeCubicPoints(points) {
+    if (segmentCount < 1) {
+      throw MeldException('invalid-cubic-path',
+          'A cubic path must contain at least one segment.');
+    }
+  }
 
   final Float64List points;
   final bool closed;
@@ -287,7 +385,7 @@ final class CubicPath {
 
 final class SampledPath {
   SampledPath(Float64List points, {required this.closed})
-      : points = Float64List.fromList(points);
+      : points = _freezeSampledPoints(points);
 
   final Float64List points;
   final bool closed;
@@ -309,6 +407,26 @@ final class SamplingConfig {
   final double cornerThreshold;
   final bool adaptive;
   final int maxPointCount;
+
+  void validate() {
+    if (pointCount < 8 || pointCount > kMeldMaxSamplePoints) {
+      throw MeldException(
+        'invalid-sampling-config',
+        'pointCount must be between 8 and $kMeldMaxSamplePoints.',
+      );
+    }
+    if (maxPointCount < pointCount || maxPointCount > kMeldMaxSamplePoints) {
+      throw MeldException(
+        'invalid-sampling-config',
+        'maxPointCount must be between pointCount and '
+            '$kMeldMaxSamplePoints.',
+      );
+    }
+    if (!cornerThreshold.isFinite || cornerThreshold < 0) {
+      throw MeldException('invalid-sampling-config',
+          'cornerThreshold must be finite and non-negative.');
+    }
+  }
 
   SamplingConfig copyWith({
     int? pointCount,
@@ -344,6 +462,24 @@ final class SpringConfig {
   final double damping;
   final double mass;
   final double maxStep;
+
+  void validate() {
+    if (!stiffness.isFinite ||
+        stiffness <= 0 ||
+        !damping.isFinite ||
+        damping < 0 ||
+        !mass.isFinite ||
+        mass <= 0 ||
+        !maxStep.isFinite ||
+        maxStep <= 0 ||
+        maxStep > 1) {
+      throw MeldException(
+        'invalid-spring-config',
+        'Spring stiffness, damping, mass and maxStep must be finite; '
+            'stiffness/mass/maxStep must be positive and maxStep must not exceed 1.',
+      );
+    }
+  }
 
   SpringConfig copyWith({
     double? stiffness,
@@ -459,4 +595,52 @@ final class MorphSnapshot {
   final bool flying;
   final double velocity;
   final PlanDiagnostics? diagnostics;
+}
+
+Float64List _freezeCubicPoints(Float64List input) {
+  if (input.length < 8 || (input.length - 2) % 6 != 0) {
+    throw MeldException(
+      'invalid-cubic-path',
+      'Cubic path points must contain p0 followed by cubic segments.',
+    );
+  }
+  final segments = (input.length - 2) ~/ 6;
+  if (segments > kMeldMaxCubicSegments) {
+    throw MeldException(
+      'geometry-limit',
+      'A cubic path may contain at most $kMeldMaxCubicSegments segments.',
+    );
+  }
+  for (final value in input) {
+    if (!value.isFinite) {
+      throw MeldException(
+        'invalid-coordinate',
+        'Cubic path coordinates must be finite.',
+      );
+    }
+  }
+  return Float64List.fromList(input).asUnmodifiableView();
+}
+
+Float64List _freezeSampledPoints(Float64List input) {
+  final count = input.length ~/ 2;
+  if (input.length.isOdd || count < 8) {
+    throw MeldException('invalid-sampled-path',
+        'A sampled path must contain at least 8 points.');
+  }
+  if (count > kMeldMaxSamplePoints) {
+    throw MeldException(
+      'sample-count-too-large',
+      'A sampled path may contain at most $kMeldMaxSamplePoints points.',
+    );
+  }
+  for (final value in input) {
+    if (!value.isFinite) {
+      throw MeldException(
+        'invalid-coordinate',
+        'Sampled path coordinates must be finite.',
+      );
+    }
+  }
+  return Float64List.fromList(input).asUnmodifiableView();
 }

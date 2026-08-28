@@ -17,7 +17,7 @@ Meld 让一个矢量形状自然地变成另一个形状，避免普通逐点插
 
 ```yaml
 dependencies:
-meld: ^1.0.0
+  meld: ^1.0.0
 ```
 
 ```dart

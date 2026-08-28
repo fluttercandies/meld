@@ -75,6 +75,10 @@ void _pointAt(
 }
 
 List<int> detectCorners(CubicPath path, [double threshold = math.pi / 8]) {
+  if (!threshold.isFinite || threshold < 0) {
+    throw MeldException('invalid-corner-threshold',
+        'Corner threshold must be finite and non-negative.');
+  }
   final points = path.points;
   final segments = path.segmentCount;
   final active = <int>[
@@ -134,6 +138,10 @@ Float64List resamplePath(CubicPath path, int count,
   if (count < 8) {
     throw MeldException(
         'sample-count-too-small', 'A path requires at least 8 sample points.');
+  }
+  if (count > kMeldMaxSamplePoints) {
+    throw MeldException('sample-count-too-large',
+        'A path may contain at most $kMeldMaxSamplePoints sample points.');
   }
   final points = path.points;
   final segments = path.segmentCount;
@@ -243,6 +251,7 @@ Float64List resamplePath(CubicPath path, int count,
 }
 
 int adaptiveSampleCount(List<CubicPath> paths, SamplingConfig config) {
+  config.validate();
   if (!config.adaptive) return config.pointCount;
   var complexity = 0;
   for (final path in paths) {
@@ -305,17 +314,18 @@ double samplingErrorEstimate(List<CubicPath> paths, int sampleCount) {
 
 List<SampledPath> resampleIcon(MeldSource source,
     [SamplingConfig config = const SamplingConfig()]) {
+  config.validate();
   final paths = iconToCubics(source);
   if (paths.isEmpty)
     throw MeldException(
         'empty-icon', 'The icon contains no drawable geometry.');
   final count = adaptiveSampleCount(paths, config);
-  return paths
+  return List<SampledPath>.unmodifiable(paths
       .map(
         (path) => SampledPath(
           resamplePath(path, count, cornerThreshold: config.cornerThreshold),
           closed: path.closed,
         ),
       )
-      .toList(growable: false);
+      .toList(growable: false));
 }

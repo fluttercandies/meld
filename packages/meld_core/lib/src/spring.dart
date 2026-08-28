@@ -2,7 +2,9 @@ import 'model.dart';
 
 /// Deterministic damped spring over a normalized progress value.
 final class MeldSpring {
-  MeldSpring([SpringConfig config = const SpringConfig()]) : _config = config;
+  MeldSpring([SpringConfig config = const SpringConfig()]) : _config = config {
+    _config.validate();
+  }
 
   SpringConfig _config;
   double position = 1;
@@ -13,11 +15,16 @@ final class MeldSpring {
   SpringConfig get config => _config;
 
   void configure(SpringConfig config) {
+    config.validate();
     _config = config;
   }
 
   void start({double inheritedVelocity = 0, double target = 1}) {
     _validateTarget(target);
+    if (!inheritedVelocity.isFinite) {
+      throw MeldException(
+          'invalid-velocity', 'Spring velocity must be finite.');
+    }
     this.target = target;
     position = target == 1 ? 0 : 1;
     velocity = inheritedVelocity.clamp(-14, 14).toDouble();
@@ -74,6 +81,11 @@ final class MeldSpring {
           _config.mass;
       velocity += acceleration * dt;
       position += velocity * dt;
+      if (!velocity.isFinite || !position.isFinite) {
+        running = false;
+        throw MeldException('spring-overflow',
+            'Spring integration produced a non-finite state.');
+      }
     }
     final settled = (target - position).abs() < 0.001 && velocity.abs() < 0.02;
     if (settled) {

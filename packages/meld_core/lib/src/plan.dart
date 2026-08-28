@@ -7,6 +7,35 @@ const double _lengthWeight = 0.35;
 const double _rotationTieBreak = 0.05;
 const double _globalEpsilon = 5e-3;
 
+double _finiteNumber(double value, String name) {
+  if (!value.isFinite) {
+    throw MeldException('invalid-plan', 'Plan field "$name" must be finite.');
+  }
+  return value;
+}
+
+double _nonNegativeNumber(double value, String name) {
+  if (!value.isFinite || value < 0) {
+    throw MeldException(
+        'invalid-plan', 'Plan field "$name" must be finite and non-negative.');
+  }
+  return value;
+}
+
+void _validatePair((double, double) value, String name) {
+  if (!value.$1.isFinite || !value.$2.isFinite) {
+    throw MeldException('invalid-plan', 'Plan field "$name" must be finite.');
+  }
+}
+
+void _validatePlanBuffer(Float64List values, String name) {
+  if (values.length > kMeldMaxSamplePoints * 2 ||
+      values.any((value) => !value.isFinite)) {
+    throw MeldException(
+        'invalid-plan', 'Plan field "$name" contains invalid coordinates.');
+  }
+}
+
 final class Similarity {
   const Similarity(this.theta, this.scale, this.residual);
   final double theta;
@@ -15,15 +44,17 @@ final class Similarity {
 }
 
 final class Alignment extends Similarity {
-  const Alignment({
+  Alignment({
     required this.centerA,
     required this.centerB,
-    required this.a,
-    required this.b,
+    required Float64List a,
+    required Float64List b,
     required double theta,
     required double scale,
     required double residual,
-  }) : super(theta, scale, residual);
+  })  : a = Float64List.fromList(a).asUnmodifiableView(),
+        b = Float64List.fromList(b).asUnmodifiableView(),
+        super(theta, scale, residual);
   final (double, double) centerA;
   final (double, double) centerB;
   final Float64List a;
@@ -44,15 +75,38 @@ final class MeldPlanItem {
     required Float64List orientedB,
     required this.centerA,
     required this.centerB,
-    required this.theta,
-    required this.logScale,
-    required this.residual,
+    required double theta,
+    required double logScale,
+    required double residual,
     required this.closed,
-    this.block,
-  })  : a = Float64List.fromList(a),
-        centeredA = Float64List.fromList(centeredA),
-        transformedB = Float64List.fromList(transformedB),
-        orientedB = Float64List.fromList(orientedB);
+    BlockTransport? block,
+  })  : a = Float64List.fromList(a).asUnmodifiableView(),
+        centeredA = Float64List.fromList(centeredA).asUnmodifiableView(),
+        transformedB = Float64List.fromList(transformedB).asUnmodifiableView(),
+        orientedB = Float64List.fromList(orientedB).asUnmodifiableView(),
+        theta = _finiteNumber(theta, 'theta'),
+        logScale = _finiteNumber(logScale, 'logScale'),
+        residual = _nonNegativeNumber(residual, 'residual'),
+        block = block {
+    _validatePlanBuffer(this.a, 'a');
+    _validatePlanBuffer(this.centeredA, 'centeredA');
+    _validatePlanBuffer(this.transformedB, 'transformedB');
+    _validatePlanBuffer(this.orientedB, 'orientedB');
+    _validatePair(centerA, 'centerA');
+    _validatePair(centerB, 'centerB');
+    if (this.a.length != this.centeredA.length ||
+        this.a.length != this.transformedB.length ||
+        this.a.length != this.orientedB.length ||
+        this.a.length < 16 ||
+        this.a.length.isOdd) {
+      throw MeldException('invalid-plan',
+          'Plan item buffers must have matching non-empty lengths.');
+    }
+    if (block != null) {
+      _validatePair(block.offset, 'block.offset');
+      _validatePair(block.drift, 'block.drift');
+    }
+  }
 
   final Float64List a;
   final Float64List centeredA;
@@ -60,11 +114,11 @@ final class MeldPlanItem {
   final Float64List orientedB;
   final (double, double) centerA;
   final (double, double) centerB;
-  double theta;
-  double logScale;
-  double residual;
+  final double theta;
+  final double logScale;
+  final double residual;
   final bool closed;
-  BlockTransport? block;
+  final BlockTransport? block;
 }
 
 final class MeldPlan {
@@ -75,14 +129,20 @@ final class MeldPlan {
           'unsupported-plan-version', 'Unsupported MeldPlan version $version.');
     }
     final sampleCount = json['sampleCount'];
-    if (sampleCount is! int || sampleCount < 8) {
+    if (sampleCount is! int ||
+        sampleCount < 8 ||
+        sampleCount > kMeldMaxSamplePoints) {
       throw MeldException(
-          'invalid-plan', 'Plan sampleCount must be an integer of at least 8.');
+          'invalid-plan',
+          'Plan sampleCount must be an integer between 8 and '
+              '$kMeldMaxSamplePoints.');
     }
     final rawItems = json['items'];
-    if (rawItems is! List<Object?> || rawItems.isEmpty) {
+    if (rawItems is! List<Object?> ||
+        rawItems.isEmpty ||
+        rawItems.length > 512) {
       throw MeldException(
-          'invalid-plan', 'Plan items must be a non-empty list.');
+          'invalid-plan', 'Plan items must contain between 1 and 512 entries.');
     }
     Float64List points(Object? value, String name) {
       if (value is! List<Object?> || value.length != sampleCount * 2) {
@@ -176,7 +236,22 @@ final class MeldPlan {
       {required Iterable<MeldPlanItem> items,
       required this.sampleCount,
       required this.diagnostics})
-      : items = List<MeldPlanItem>.unmodifiable(items);
+      : items = List<MeldPlanItem>.unmodifiable(items) {
+    if (sampleCount < 8 || sampleCount > kMeldMaxSamplePoints) {
+      throw MeldException('invalid-plan',
+          'Plan sampleCount must be between 8 and $kMeldMaxSamplePoints.');
+    }
+    if (this.items.isEmpty || this.items.length > 512) {
+      throw MeldException(
+          'invalid-plan', 'Plan must contain between 1 and 512 subpath items.');
+    }
+    for (final item in this.items) {
+      if (item.a.length != sampleCount * 2) {
+        throw MeldException(
+            'invalid-plan', 'Plan item buffers do not match sampleCount.');
+      }
+    }
+  }
 
   final List<MeldPlanItem> items;
   final int sampleCount;
@@ -494,9 +569,11 @@ MeldPlan buildPlan(List<SampledPath> source, List<SampledPath> target,
       ),
     );
   }
-  if (items.length > 1) _applyGlobal(items, sampleCount);
+  final plannedItems = items.length > 1
+      ? _applyGlobal(items, sampleCount)
+      : List<MeldPlanItem>.unmodifiable(items);
   stopwatch.stop();
-  final residuals = items.map((item) => item.residual);
+  final residuals = plannedItems.map((item) => item.residual);
   final diagnostics = PlanDiagnostics(
     sourceSubpaths: source.length,
     targetSubpaths: target.length,
@@ -504,15 +581,15 @@ MeldPlan buildPlan(List<SampledPath> source, List<SampledPath> target,
     meanResidual:
         residuals.fold<double>(0, (sum, value) => sum + value) / items.length,
     maxResidual: residuals.fold<double>(0, math.max),
-    usedGlobalBlock: items.any((item) => item.block != null),
+    usedGlobalBlock: plannedItems.any((item) => item.block != null),
     elapsedMicros: stopwatch.elapsedMicroseconds,
     cacheHit: cacheHit,
   );
   return MeldPlan(
-      items: items, sampleCount: sampleCount, diagnostics: diagnostics);
+      items: plannedItems, sampleCount: sampleCount, diagnostics: diagnostics);
 }
 
-void _applyGlobal(List<MeldPlanItem> items, int sampleCount) {
+List<MeldPlanItem> _applyGlobal(List<MeldPlanItem> items, int sampleCount) {
   final allA = Float64List(items.length * sampleCount * 2);
   final allB = Float64List(items.length * sampleCount * 2);
   for (var i = 0; i < items.length; i++) {
@@ -522,19 +599,23 @@ void _applyGlobal(List<MeldPlanItem> items, int sampleCount) {
   }
   final centerA = centroid(allA);
   final global = procrustes(allA, allB, centerA, centroid(allB));
-  if (global.residual >= _globalEpsilon) return;
+  if (global.residual >= _globalEpsilon) {
+    return List<MeldPlanItem>.unmodifiable(items);
+  }
   final cos = math.cos(-global.theta);
   final sin = math.sin(-global.theta);
   final restoreCos = math.cos(global.theta);
   final restoreSin = math.sin(global.theta);
+  final output = <MeldPlanItem>[];
   for (final item in items) {
+    final transformedB = Float64List(sampleCount * 2);
     var error = 0.0;
     var energy = 0.0;
     for (var i = 0; i < sampleCount; i++) {
       final bx = item.orientedB[i * 2] - item.centerB.$1;
       final by = item.orientedB[i * 2 + 1] - item.centerB.$2;
-      item.transformedB[i * 2] = (bx * cos - by * sin) / global.scale;
-      item.transformedB[i * 2 + 1] = (bx * sin + by * cos) / global.scale;
+      transformedB[i * 2] = (bx * cos - by * sin) / global.scale;
+      transformedB[i * 2 + 1] = (bx * sin + by * cos) / global.scale;
       final ex = global.scale *
               (restoreCos * item.centeredA[i * 2] -
                   restoreSin * item.centeredA[i * 2 + 1]) -
@@ -546,23 +627,37 @@ void _applyGlobal(List<MeldPlanItem> items, int sampleCount) {
       error += ex * ex + ey * ey;
       energy += bx * bx + by * by;
     }
-    item.theta = global.theta;
-    item.logScale = math.log(global.scale);
-    item.residual = energy > 1e-12 ? math.sqrt(error / energy) : 0;
+    final residual =
+        energy > 1e-12 ? math.sqrt(error / energy).toDouble() : 0.0;
     final offsetX = item.centerA.$1 - centerA.$1;
     final offsetY = item.centerA.$2 - centerA.$2;
     final c1 = math.cos(item.theta) * global.scale;
     final s1 = math.sin(item.theta) * global.scale;
     final rotatedX = offsetX * c1 - offsetY * s1 - offsetX;
     final rotatedY = offsetX * s1 + offsetY * c1 - offsetY;
-    item.block = BlockTransport(
-      offset: (offsetX, offsetY),
-      drift: (
-        item.centerB.$1 - item.centerA.$1 - rotatedX,
-        item.centerB.$2 - item.centerA.$2 - rotatedY,
+    output.add(
+      MeldPlanItem(
+        a: item.a,
+        centeredA: item.centeredA,
+        transformedB: transformedB,
+        orientedB: item.orientedB,
+        centerA: item.centerA,
+        centerB: item.centerB,
+        theta: global.theta,
+        logScale: math.log(global.scale),
+        residual: residual,
+        closed: item.closed,
+        block: BlockTransport(
+          offset: (offsetX, offsetY),
+          drift: (
+            item.centerB.$1 - item.centerA.$1 - rotatedX,
+            item.centerB.$2 - item.centerA.$2 - rotatedY,
+          ),
+        ),
       ),
     );
   }
+  return List<MeldPlanItem>.unmodifiable(output);
 }
 
 List<Float64List> allocateOutputs(MeldPlan plan) => plan.items
@@ -582,6 +677,12 @@ void interpolatePlan(
   if (output.length != plan.items.length) {
     throw MeldException(
         'output-size-mismatch', 'Output buffers do not match the plan.');
+  }
+  for (final buffer in output) {
+    if (buffer.length != plan.sampleCount * 2) {
+      throw MeldException(
+          'output-size-mismatch', 'Output buffers do not match the plan.');
+    }
   }
   switch (strategy) {
     case MeldInterpolationStrategy.linear:
@@ -647,9 +748,19 @@ void _interpolateLinear(
 }
 
 String sampledPathData(List<Float64List> paths, List<bool> closed) {
+  if (paths.length != closed.length) {
+    throw MeldException('output-size-mismatch',
+        'Path and closure lists must have equal lengths.');
+  }
   final buffer = StringBuffer();
   for (var p = 0; p < paths.length; p++) {
     final points = paths[p];
+    if (points.length < 2 ||
+        points.length.isOdd ||
+        points.any((value) => !value.isFinite)) {
+      throw MeldException('invalid-sampled-path',
+          'Sampled path data must contain finite point pairs.');
+    }
     buffer.write('M${_frameNumber(points[0])} ${_frameNumber(points[1])}');
     for (var i = 2; i < points.length; i += 2) {
       buffer

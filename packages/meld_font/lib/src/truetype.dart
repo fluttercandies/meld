@@ -11,7 +11,19 @@ final class FontGlyphRef {
     this.fontFamily,
     this.maxComponents = 64,
     this.maxPoints = 10000,
-  }) : fontBytes = Uint8List.fromList(fontBytes);
+  }) : fontBytes = Uint8List.fromList(fontBytes).asUnmodifiableView() {
+    if (this.fontBytes.isEmpty || this.fontBytes.length > 32 * 1024 * 1024) {
+      throw MeldException(
+          'invalid-font', 'Font bytes must be non-empty and at most 32 MiB.');
+    }
+    if (maxComponents <= 0 ||
+        maxComponents > 1024 ||
+        maxPoints <= 0 ||
+        maxPoints > 100000) {
+      throw MeldException('invalid-font',
+          'Font component and point limits are outside the supported range.');
+    }
+  }
 
   final Uint8List fontBytes;
   final int codePoint;
@@ -24,37 +36,48 @@ final class FontGlyphRef {
 /// variable outlines are rejected explicitly until their geometry semantics
 /// can be represented without losing fidelity.
 MeldSource fontGlyphToSource(FontGlyphRef ref, {double grid = 24}) {
-  final font = _TrueTypeFont(ref);
-  final glyphId = font.glyphIdForCodePoint(ref.codePoint);
-  if (glyphId == 0 && !font.hasGlyphZero) {
-    throw MeldException('glyph-not-found',
-        'No glyph for U+${ref.codePoint.toRadixString(16).toUpperCase()}.');
+  if (!grid.isFinite || grid <= 0) {
+    throw MeldException(
+        'invalid-grid', 'Grid size must be finite and positive.');
   }
-  final paths = font.glyphPaths(glyphId);
-  if (paths.isEmpty)
-    throw MeldException(
-        'empty-glyph', 'The requested glyph has no outline geometry.');
-  final bounds = _bounds(paths);
-  final width = bounds.maxX - bounds.minX;
-  final height = bounds.maxY - bounds.minY;
-  if (!(width > 0) || !(height > 0))
-    throw MeldException(
-        'empty-glyph', 'The requested glyph has a zero-sized outline.');
-  final scale = math.min(grid / width, grid / height);
-  final tx = (grid - width * scale) / 2 - bounds.minX * scale;
-  final ty = (grid - height * scale) / 2 + bounds.maxY * scale;
-  final normalized = paths.map((path) {
-    final points = Float64List(path.points.length);
-    for (var i = 0; i < points.length; i += 2) {
-      points[i] = path.points[i] * scale + tx;
-      points[i + 1] = -path.points[i + 1] * scale + ty;
+  try {
+    final font = _TrueTypeFont(ref);
+    final glyphId = font.glyphIdForCodePoint(ref.codePoint);
+    if (glyphId == 0) {
+      throw MeldException('glyph-not-found',
+          'No glyph for U+${ref.codePoint.toRadixString(16).toUpperCase()}.');
     }
-    return CubicPath(points, closed: true);
-  });
-  return CubicSource(
-    normalized,
-    paintStyle: MeldSourcePaintStyle.fill,
-  );
+    final paths = font.glyphPaths(glyphId);
+    if (paths.isEmpty)
+      throw MeldException(
+          'empty-glyph', 'The requested glyph has no outline geometry.');
+    final bounds = _bounds(paths);
+    final width = bounds.maxX - bounds.minX;
+    final height = bounds.maxY - bounds.minY;
+    if (!(width > 0) || !(height > 0))
+      throw MeldException(
+          'empty-glyph', 'The requested glyph has a zero-sized outline.');
+    final scale = math.min(grid / width, grid / height);
+    final tx = (grid - width * scale) / 2 - bounds.minX * scale;
+    final ty = (grid - height * scale) / 2 + bounds.maxY * scale;
+    final normalized = paths.map((path) {
+      final points = Float64List(path.points.length);
+      for (var i = 0; i < points.length; i += 2) {
+        points[i] = path.points[i] * scale + tx;
+        points[i + 1] = -path.points[i + 1] * scale + ty;
+      }
+      return CubicPath(points, closed: true);
+    });
+    return CubicSource(
+      normalized,
+      paintStyle: MeldSourcePaintStyle.fill,
+    );
+  } on MeldException {
+    rethrow;
+  } catch (error) {
+    throw MeldException(
+        'invalid-font', 'Unable to decode font outline: $error');
+  }
 }
 
 ({double minX, double minY, double maxX, double maxY}) _bounds(
@@ -104,7 +127,6 @@ final class _TrueTypeFont {
   late final int glyphCount;
   late final List<int> locaOffsets;
   late final _CmapSubtable cmapSubtable;
-  bool hasGlyphZero = true;
 
   int glyphIdForCodePoint(int codePoint) {
     if (codePoint < 0 || codePoint > 0x10FFFF)

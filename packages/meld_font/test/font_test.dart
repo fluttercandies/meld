@@ -39,5 +39,15 @@ void main() {
     );
     expect(paths.expand((item) => item.points).every((value) => value.isFinite),
         isTrue);
+    expect(
+      () => fontGlyphToSource(
+        FontGlyphRef(
+          fontBytes: File(path!).readAsBytesSync(),
+          codePoint: 0x10FFFF,
+        ),
+      ),
+      throwsA(isA<MeldException>()
+          .having((error) => error.code, 'code', 'glyph-not-found')),
+    );
   });
 }

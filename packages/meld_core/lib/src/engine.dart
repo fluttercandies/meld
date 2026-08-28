@@ -31,7 +31,13 @@ final class MeldEngine {
     this.sampling = const SamplingConfig(),
     this.interpolation = MeldInterpolationStrategy.polar,
     this.maxCacheEntries = 128,
-  }) : assert(maxCacheEntries > 0);
+  }) {
+    sampling.validate();
+    if (maxCacheEntries <= 0) {
+      throw MeldException(
+          'invalid-cache-config', 'maxCacheEntries must be positive.');
+    }
+  }
 
   final SamplingConfig sampling;
   final MeldInterpolationStrategy interpolation;
@@ -56,9 +62,26 @@ final class MeldEngine {
 
   String canonical(MeldSource source) => canonicalPathData(source);
 
+  String _fingerprint(MeldSource source) {
+    final buffer = StringBuffer();
+    for (final path in iconToCubics(source)) {
+      buffer
+        ..write(path.closed ? '1:' : '0:')
+        ..write(path.points.length)
+        ..write(':');
+      for (final value in path.points) {
+        buffer
+          ..write(value.toString())
+          ..write(',');
+      }
+      buffer.write(';');
+    }
+    return buffer.toString();
+  }
+
   List<SampledPath> sample(MeldSource source) {
     final key =
-        '${canonical(source)}|${sampling.pointCount}|${sampling.cornerThreshold}|${sampling.adaptive}|${sampling.maxPointCount}';
+        '${_fingerprint(source)}|${sampling.pointCount}|${sampling.cornerThreshold}|${sampling.adaptive}|${sampling.maxPointCount}';
     final cached = _sampleCache.remove(key);
     if (cached != null) {
       _sampleHits++;
@@ -70,15 +93,16 @@ final class MeldEngine {
     final count = adaptiveSampleCount(cubics, sampling);
     final fixed = sampling.copyWith(
         pointCount: count, adaptive: false, maxPointCount: count);
-    final sampled = resampleIcon(CubicSource(cubics), fixed);
+    final sampled = List<SampledPath>.unmodifiable(
+        resampleIcon(CubicSource(cubics), fixed));
     _sampleCache[key] = sampled;
     _trim(_sampleCache);
     return sampled;
   }
 
   MeldPlan plan(MeldSource source, MeldSource target) {
-    final sourceKey = canonical(source);
-    final targetKey = canonical(target);
+    final sourceKey = _fingerprint(source);
+    final targetKey = _fingerprint(target);
     final key =
         '$sourceKey\u0000$targetKey|${sampling.pointCount}|${sampling.cornerThreshold}|${sampling.adaptive}|${sampling.maxPointCount}';
     final cached = _planCache.remove(key);
@@ -168,7 +192,8 @@ final class MeldFrame {
       {required Iterable<Float64List> paths,
       required this.progress,
       required this.velocity})
-      : paths = List<Float64List>.unmodifiable(paths.map(Float64List.fromList));
+      : paths = List<Float64List>.unmodifiable(paths
+            .map((path) => Float64List.fromList(path).asUnmodifiableView()));
 
   final List<Float64List> paths;
   final double progress;

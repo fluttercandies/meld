@@ -228,7 +228,14 @@ final class _PathParser {
           fail('Unsupported path command "$command".');
       }
     }
-    return output.where((subpath) => subpath.segments.isNotEmpty).toList();
+    final segments = output.fold<int>(
+        0, (count, subpath) => count + subpath.segments.length);
+    if (segments > kMeldMaxCubicSegments) {
+      fail('Path contains too many segments.');
+    }
+    return List<RawSubpath>.unmodifiable(
+      output.where((subpath) => subpath.segments.isNotEmpty),
+    );
   }
 
   RawSubpath open() {

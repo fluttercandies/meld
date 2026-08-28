@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:meld_core/meld_core.dart';
 import 'package:test/test.dart';
@@ -121,6 +122,13 @@ void main() {
     );
     expect(
       SvgMarkupSource(
+        '<svg viewBox="0 0 24 24"><g fill="none" stroke="currentColor">'
+        '<path d="M4 4H20V20H4Z"/></g></svg>',
+      ).paintStyle,
+      MeldSourcePaintStyle.outline,
+    );
+    expect(
+      SvgMarkupSource(
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 4H20V20H4Z"/></svg>',
       ).paintStyle,
       MeldSourcePaintStyle.outline,
@@ -159,6 +167,62 @@ void main() {
     expect(stats.hits, 1);
     expect(stats.sampleHits, 1);
     expect(cachedPlan.diagnostics.cacheHit, isTrue);
+  });
+
+  test('cached geometry buffers cannot be mutated by callers', () {
+    final engine = MeldEngine();
+    final plan = engine.plan(menu, close);
+    final sampled = engine.sample(menu);
+
+    expect(() => plan.items.first.a[0] = 0, throwsUnsupportedError);
+    expect(() => plan.items.first.centeredA[0] = 0, throwsUnsupportedError);
+    expect(() => sampled.first.points[0] = 0, throwsUnsupportedError);
+
+    final cached = engine.plan(menu, close);
+    expect(cached.items.first.a[0], plan.items.first.a[0]);
+  });
+
+  test('cache fingerprint keeps sub-decimal geometry distinct', () {
+    const base = PathDataSource('M0 0L10 0');
+    const nearby = PathDataSource('M0 0L10.00004 0');
+    final engine = MeldEngine();
+    engine.plan(base, base);
+    engine.plan(base, nearby);
+    expect(engine.cacheStats.misses, 2);
+  });
+
+  test('rejects malformed public geometry and configuration', () {
+    expect(
+      () => CubicPath(Float64List.fromList(<double>[0, 0]), closed: false),
+      throwsA(isA<MeldException>()
+          .having((error) => error.code, 'code', 'invalid-cubic-path')),
+    );
+    expect(
+      () => SamplingConfig(pointCount: 8, maxPointCount: 5000).validate(),
+      throwsA(isA<MeldException>()
+          .having((error) => error.code, 'code', 'invalid-sampling-config')),
+    );
+    expect(
+      () => MeldSpring(const SpringConfig(maxStep: 2)),
+      throwsA(isA<MeldException>()
+          .having((error) => error.code, 'code', 'invalid-spring-config')),
+    );
+  });
+
+  test('structured geometry attributes are deeply immutable', () {
+    final points = <Object?>['0', '0', '24', '24'];
+    final node = GeometryNode(
+      'polyline',
+      <String, Object?>{'points': points},
+    );
+    points[0] = '999';
+    final frozen = node.attributes['points']! as List<Object?>;
+    expect(frozen.first, '0');
+    expect(frozen.length, 4);
+    expect(
+      () => frozen[0] = '1',
+      throwsUnsupportedError,
+    );
   });
 
   test('invalid path reports source offset', () {

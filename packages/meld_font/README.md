@@ -11,15 +11,18 @@ dependencies:
 
 ```dart
 import 'dart:typed_data';
+import 'package:meld_core/meld_core.dart';
 import 'package:meld_font/meld_font.dart';
 
-final source = fontGlyphToSource(
-  FontGlyphRef(
-    fontBytes: Uint8List.fromList(fontBytes),
-    codePoint: 0x2302,
-    fontFamily: 'Your licensed font',
-  ),
-);
+MeldSource loadGlyph(Uint8List fontBytes) {
+  return fontGlyphToSource(
+    FontGlyphRef(
+      fontBytes: fontBytes,
+      codePoint: 0x2302,
+      fontFamily: 'Your licensed font',
+    ),
+  );
+}
 ```
 
 The adapter rejects unsupported CFF, color, and variable outlines with a diagnostic `MeldException`. Supply a static TTF/OTF file your application is licensed to distribute, then pass the returned `MeldSource` to `MeldIcon` or `MeldEngine`.

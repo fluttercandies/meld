@@ -8,7 +8,7 @@ const double kappa = 0.5522847498307936;
 const double _tau = math.pi * 2;
 
 List<CubicPath> iconToCubics(MeldSource source) {
-  return switch (source) {
+  final paths = switch (source) {
     PathDataSource(:final d) => _pathDataToCubics(d),
     SvgMarkupSource(:final markup) => _markupToCubics(markup),
     GeometrySource(:final nodes, :final viewBox) =>
@@ -17,13 +17,14 @@ List<CubicPath> iconToCubics(MeldSource source) {
         .map((path) => CubicPath(path.points, closed: path.closed))
         .toList(growable: false),
   };
+  return List<CubicPath>.unmodifiable(paths);
 }
 
 List<CubicPath> _pathDataToCubics(String data) {
-  return parsePath(data)
+  return List<CubicPath>.unmodifiable(parsePath(data)
       .map(_lowerSubpath)
       .whereType<CubicPath>()
-      .toList(growable: false);
+      .toList(growable: false));
 }
 
 CubicPath? _lowerSubpath(RawSubpath raw) {
@@ -64,6 +65,7 @@ List<CubicPath> _geometryToCubics(List<GeometryNode> nodes) {
         'geometry-limit', 'An icon may contain at most 512 geometry nodes.');
   }
   final output = <CubicPath>[];
+  var segmentCount = 0;
   for (final node in nodes) {
     final a = node.attributes;
     switch (node.tag) {
@@ -72,40 +74,68 @@ List<CubicPath> _geometryToCubics(List<GeometryNode> nodes) {
         if (d is! String)
           throw _invalid(
               'path-missing-d', 'A path node needs a string d attribute.');
-        output.addAll(_pathDataToCubics(d));
+        final paths = _pathDataToCubics(d);
+        output.addAll(paths);
+        segmentCount +=
+            paths.fold<int>(0, (sum, path) => sum + path.segmentCount);
       case 'line':
         final b = _CubicBuilder(_number(a, 'x1'), _number(a, 'y1'));
         b.line(_number(a, 'x2'), _number(a, 'y2'));
         final path = b.finish(false);
-        if (path != null) output.add(path);
+        if (path != null) {
+          output.add(path);
+          segmentCount += path.segmentCount;
+        }
       case 'circle':
         final path = _ellipsePath(_number(a, 'cx'), _number(a, 'cy'),
             _number(a, 'r'), _number(a, 'r'));
-        if (path != null) output.add(path);
+        if (path != null) {
+          output.add(path);
+          segmentCount += path.segmentCount;
+        }
       case 'ellipse':
         final path = _ellipsePath(_number(a, 'cx'), _number(a, 'cy'),
             _number(a, 'rx'), _number(a, 'ry'));
-        if (path != null) output.add(path);
+        if (path != null) {
+          output.add(path);
+          segmentCount += path.segmentCount;
+        }
       case 'rect':
         final path = _rectPath(a);
-        if (path != null) output.add(path);
+        if (path != null) {
+          output.add(path);
+          segmentCount += path.segmentCount;
+        }
       case 'polyline':
         final path = _polyPath(_points(a['points']), false);
-        if (path != null) output.add(path);
+        if (path != null) {
+          output.add(path);
+          segmentCount += path.segmentCount;
+        }
       case 'polygon':
         final path = _polyPath(_points(a['points']), true);
-        if (path != null) output.add(path);
+        if (path != null) {
+          output.add(path);
+          segmentCount += path.segmentCount;
+        }
       default:
         throw _invalid('unsupported-element',
             'Unsupported geometry element <${node.tag}>.');
     }
   }
+  if (segmentCount > kMeldMaxCubicSegments) {
+    throw _invalid('geometry-limit',
+        'Geometry may contain at most $kMeldMaxCubicSegments cubic segments.');
+  }
   if (output.isEmpty)
     throw _invalid('empty-icon', 'The icon contains no drawable geometry.');
-  return output;
+  return List<CubicPath>.unmodifiable(output);
 }
 
 List<CubicPath> _markupToCubics(String markup, {bool applyViewBox = true}) {
+  if (markup.length > 1 << 20) {
+    throw _invalid('svg-limit', 'SVG markup exceeds the 1 MiB safety limit.');
+  }
   if (!markup.trimLeft().startsWith('<')) {
     throw _invalid('invalid-svg-markup',
         'SvgMarkupSource expects SVG markup, not raw path data.');
@@ -363,12 +393,13 @@ MeldSource fitViewBox(MeldSource source, MeldViewBox viewBox,
 List<CubicPath> _fitPaths(List<CubicPath> paths, MeldViewBox? viewBox,
     {double grid = 24}) {
   if (viewBox == null) return paths;
+  viewBox.validate();
   if (!(grid > 0) || !grid.isFinite)
     throw _invalid('invalid-grid', 'Grid size must be finite and positive.');
   final scale = math.min(grid / viewBox.width, grid / viewBox.height);
   final tx = (grid - viewBox.width * scale) / 2 - viewBox.minX * scale;
   final ty = (grid - viewBox.height * scale) / 2 - viewBox.minY * scale;
-  return paths
+  return List<CubicPath>.unmodifiable(paths
       .map(
         (path) => CubicPath(
           Float64List.fromList(
@@ -382,7 +413,7 @@ List<CubicPath> _fitPaths(List<CubicPath> paths, MeldViewBox? viewBox,
           closed: path.closed,
         ),
       )
-      .toList(growable: false);
+      .toList(growable: false));
 }
 
 String canonicalPathData(MeldSource source) {

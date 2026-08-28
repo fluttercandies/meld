@@ -12,6 +12,8 @@ dependencies:
 ```dart
 import 'package:meld_flutter/meld_flutter.dart';
 
+const from = PathDataSource('M3 6H21M3 12H21M3 18H21');
+const to = PathDataSource('M5 5L19 19M19 5L5 19');
 final controller = MeldIconController(initialSource: from);
 
 // Put the controller in a MeldIcon, then call:
