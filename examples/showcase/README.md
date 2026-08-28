@@ -11,4 +11,9 @@ flutter build ios --debug --no-codesign
 
 The showcase is intentionally built from the public `meld` facade so every interaction exercises the same API a downstream app uses.
 
+Use the speed button in the header to open the multi-instance stress page. It
+mounts 100 icons by default, can scale to 250, and plays the same cached pair
+through the shared isolate ticker so frame time can be inspected on a target
+device with Flutter DevTools.
+
 Use the `Build a transition` panel to choose the start and end independently, including mixed-format transitions. `Path data` uses raw SVG `d` strings, `SVG markup` exercises the portable element parser and viewBox handling, and `Font glyphs` converts Flutter's `IconData` references into geometry through caller-owned font bytes. The swap action, progress scrubber, spring playback, and reverse-to-start action work across all three input families. Reverse-to-start swaps the endpoint definitions first, then plays the new transition forward so the displayed path remains canonical and stable.

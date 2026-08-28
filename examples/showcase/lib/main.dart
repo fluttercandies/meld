@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:meld/meld.dart' hide Alignment;
 
+import 'stress_test.dart';
+
 abstract final class _MeldColors {
   static const canvas = Color(0xFF090A0F);
   static const surface = Color(0xFF11131B);
@@ -468,7 +470,16 @@ class _ShowcaseHomeState extends State<ShowcaseHome> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      _Header(wide: wide),
+                      _Header(
+                        wide: wide,
+                        onOpenStressTest: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => const StressTestPage(),
+                            ),
+                          );
+                        },
+                      ),
                       SizedBox(height: wide ? 24 : 20),
                       wide ? _wideLayout() : _narrowLayout(),
                     ],
@@ -1240,8 +1251,9 @@ class _PairTile extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.wide});
+  const _Header({required this.wide, required this.onOpenStressTest});
   final bool wide;
+  final VoidCallback onOpenStressTest;
 
   @override
   Widget build(BuildContext context) {
@@ -1271,6 +1283,12 @@ class _Header extends StatelessWidget {
           'Dart · Flutter · deterministic',
           style: TextStyle(color: _MeldColors.inkMuted, fontSize: 13),
         ),
+      IconButton(
+        key: const ValueKey<String>('stress-test-button'),
+        tooltip: 'Open stress test',
+        onPressed: onOpenStressTest,
+        icon: const Icon(Icons.speed_rounded),
+      ),
     ]);
   }
 }

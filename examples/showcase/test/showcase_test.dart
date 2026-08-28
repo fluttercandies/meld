@@ -2,12 +2,59 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meld/meld.dart';
 import 'package:meld_showcase/main.dart';
+import 'package:meld_showcase/stress_test.dart';
 
 void main() {
   testWidgets('showcase boots with the responsive preview', (tester) async {
     await tester.pumpWidget(const MeldShowcaseApp());
     expect(find.text('Meld'), findsOneWidget);
     expect(find.text('Explore the motion'), findsOneWidget);
+  });
+
+  testWidgets('opens the multi-instance stress page', (tester) async {
+    await tester.pumpWidget(const MeldShowcaseApp());
+    await tester.tap(
+      find.byKey(const ValueKey<String>('stress-test-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Many icons, one shared scheduler'), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('stress-grid')), findsOneWidget);
+    expect(find.byType(MeldIcon), findsNWidgets(100));
+  });
+
+  testWidgets('stress page animates and resizes all mounted instances',
+      (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: StressTestPage()));
+    await tester.pump();
+    expect(find.byType(MeldIcon), findsNWidgets(100));
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('stress-play-all')),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+    final icons = tester.widgetList<MeldIcon>(find.byType(MeldIcon));
+    expect(icons.every((icon) => icon.controller!.isAnimating), isTrue);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('stress-count-250')),
+    );
+    await tester.pump();
+    expect(find.byType(MeldIcon), findsNWidgets(250));
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('stress-reset-all')),
+    );
+    await tester.pump();
+    final resetIcons = tester.widgetList<MeldIcon>(find.byType(MeldIcon));
+    expect(resetIcons.every((icon) => !icon.controller!.isAnimating), isTrue);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('stress-reverse-all')),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+    final reversedIcons = tester.widgetList<MeldIcon>(find.byType(MeldIcon));
+    expect(reversedIcons.every((icon) => icon.controller!.isAnimating), isTrue);
   });
 
   testWidgets('wide workbench uses four-column control grids', (tester) async {
