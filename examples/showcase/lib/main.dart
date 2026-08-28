@@ -419,13 +419,19 @@ class _ShowcaseHomeState extends State<ShowcaseHome> {
 
   Future<void> _play() async {
     if (!_hasShapeChange) return;
-    if (_controller.progress >= 0.999 ||
-        _controller.status == MeldIconStatus.completed) {
-      _controller.set(_fromOption.source);
+    final spring = SpringConfig(stiffness: _stiffness, damping: _damping);
+    if (_controller.status == MeldIconStatus.completed &&
+        _controller.progress >= 1 - 1e-6) {
+      await _controller.reverse(spring: spring);
+      return;
+    }
+    if (_controller.status == MeldIconStatus.paused) {
+      _controller.resume();
+      return;
     }
     await _controller.morphTo(
       _toOption.source,
-      spring: SpringConfig(stiffness: _stiffness, damping: _damping),
+      spring: spring,
     );
   }
 
@@ -753,6 +759,8 @@ class _ShowcaseHomeState extends State<ShowcaseHome> {
       builder: (context, child) {
         final isRunning = _controller.status == MeldIconStatus.running;
         final isNoOp = !_hasShapeChange;
+        final atEnd = _controller.progress >= 1 - 1e-6;
+        final inFlight = _controller.progress > 1e-6 && !atEnd;
         return SizedBox(
           width: double.infinity,
           child: FilledButton.icon(
@@ -768,7 +776,11 @@ class _ShowcaseHomeState extends State<ShowcaseHome> {
                   ? 'Playing transition…'
                   : isNoOp
                       ? 'Choose different endpoints'
-                      : 'Play spring transition',
+                      : atEnd
+                          ? 'Reverse to start'
+                          : inFlight
+                              ? 'Continue to end'
+                              : 'Play spring transition',
             ),
           ),
         );
@@ -952,6 +964,7 @@ class _EndpointCard extends StatelessWidget {
               ),
             ),
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: <Widget>[
                 MeldIcon(
                   icon: option.source,
@@ -962,9 +975,9 @@ class _EndpointCard extends StatelessWidget {
                   excludeFromSemantics: true,
                 ),
                 const SizedBox(width: 8),
-                Expanded(
+                Flexible(
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: <Widget>[
                       Text(
@@ -981,6 +994,7 @@ class _EndpointCard extends StatelessWidget {
                         option.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
                         style: TextStyle(
                           color: _MeldColors.ink,
                           fontSize: 13,

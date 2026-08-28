@@ -17,6 +17,62 @@ void main() {
     controller.dispose();
   });
 
+  test('unattached reverse resolves to the opposite endpoint', () async {
+    final controller = MeldIconController(initialSource: _line);
+    controller.seek(_cross, 0);
+
+    final forward = await controller.reverse();
+    expect(forward.end, MeldTransitionEnd.completed);
+    expect(controller.currentSource, same(_cross));
+    expect(controller.progress, 1);
+
+    final backward = await controller.reverse();
+    expect(backward.end, MeldTransitionEnd.completed);
+    expect(controller.currentSource, same(_line));
+    expect(controller.progress, 0);
+    controller.dispose();
+  });
+
+  testWidgets('reverse works from running, paused, and completed states',
+      (tester) async {
+    final controller = MeldIconController(initialSource: _line)
+      ..motionMode = MeldMotionMode.always;
+    await tester.pumpWidget(
+      MaterialApp(home: MeldIcon(controller: controller, label: 'Reverse')),
+    );
+    controller.seek(_cross, 0);
+
+    final forward = controller.reverse();
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 96));
+    expect(controller.status, MeldIconStatus.running);
+    expect(controller.progress, greaterThan(0));
+    controller.pause();
+    expect(controller.status, MeldIconStatus.paused);
+    final resumed = controller.reverse();
+    await tester.pumpAndSettle(const Duration(milliseconds: 16));
+    expect((await resumed).end, MeldTransitionEnd.completed);
+    expect((await forward).end, MeldTransitionEnd.completed);
+    expect(controller.currentSource, same(_line));
+    expect(controller.progress, 0);
+
+    final completedForward = controller.reverse();
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 32));
+    expect(controller.progress, greaterThan(0));
+    await tester.pumpAndSettle(const Duration(milliseconds: 16));
+    expect((await completedForward).end, MeldTransitionEnd.completed);
+    expect(controller.currentSource, same(_cross));
+    expect(controller.progress, 1);
+
+    final completedBackward = controller.reverse();
+    await tester.pumpAndSettle(const Duration(milliseconds: 16));
+    expect((await completedBackward).end, MeldTransitionEnd.completed);
+    expect(controller.currentSource, same(_line));
+    expect(controller.progress, 0);
+    controller.dispose();
+  });
+
   testWidgets('renders a labeled icon and honors controlled progress',
       (tester) async {
     await tester.pumpWidget(

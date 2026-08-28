@@ -87,6 +87,17 @@ void main() {
     await tester.pumpAndSettle(const Duration(milliseconds: 16));
     expect(controller.status, MeldIconStatus.completed);
     expect(controller.progress, 1);
+    expect(find.text('Reverse to start'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey<String>('play-button')));
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 32));
+    expect(controller.status, MeldIconStatus.running);
+    expect(controller.progress, lessThan(1));
+    await tester.pumpAndSettle(const Duration(milliseconds: 16));
+    expect(controller.status, MeldIconStatus.completed);
+    expect(controller.progress, 0);
+    expect(find.text('Play spring transition'), findsOneWidget);
   });
 
   testWidgets('path, svg, and font endpoint changes all remain animatable',

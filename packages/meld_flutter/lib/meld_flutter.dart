@@ -169,6 +169,8 @@ final class MeldIconController extends ChangeNotifier {
   final MeldEngine engine;
   MeldSource? _current;
   MeldSource? _target;
+  MeldSource? _previousSource;
+  MeldSource? _planStartSource;
   MeldPlan? _plan;
   List<Float64List>? _outputs;
   List<bool>? _closed;
@@ -185,6 +187,8 @@ final class MeldIconController extends ChangeNotifier {
   double _velocity = 0;
   MeldSourcePaintStyle _currentPaintStyle = MeldSourcePaintStyle.outline;
   MeldSourcePaintStyle _targetPaintStyle = MeldSourcePaintStyle.outline;
+  MeldSourcePaintStyle _planStartPaintStyle = MeldSourcePaintStyle.outline;
+  MeldSourcePaintStyle _planTargetPaintStyle = MeldSourcePaintStyle.outline;
   MeldMotionMode motionMode = MeldMotionMode.user;
   MeldInterpolationStrategy interpolation = MeldInterpolationStrategy.polar;
   bool userAnimationsDisabled = false;
@@ -269,8 +273,12 @@ final class MeldIconController extends ChangeNotifier {
       _ticker?.stop();
       final hasInFlightGeometry = _status == MeldIconStatus.running ||
           _plan != null && _progress > 0 && _progress < 1;
+      _previousSource = _current;
       final sourceForPlan =
           hasInFlightGeometry ? _sourceFromOutputs() : _current!;
+      _planStartSource = sourceForPlan;
+      _planStartPaintStyle = sourceForPlan.paintStyle;
+      _planTargetPaintStyle = source.paintStyle;
       _plan = engine.plan(sourceForPlan, source);
       _outputs = allocateOutputs(_plan!);
       _closed = <bool>[for (final item in _plan!.items) item.closed];
@@ -306,6 +314,8 @@ final class MeldIconController extends ChangeNotifier {
     _completePrevious(MeldTransitionEnd.cancelled);
     try {
       _current = source;
+      _previousSource = null;
+      _planStartSource = null;
       _currentPaintStyle = source.paintStyle;
       _targetPaintStyle = _currentPaintStyle;
       _currentPaths = iconToCubics(source);
@@ -332,9 +342,15 @@ final class MeldIconController extends ChangeNotifier {
       _validateSource(source);
       final base = _current ?? source;
       if (_current == null) _currentPaintStyle = base.paintStyle;
+      _previousSource ??= _current;
       final targetChanged = _target == null ||
           canonicalPathData(_target!) != canonicalPathData(source);
-      if (_plan == null || targetChanged) _plan = engine.plan(base, source);
+      if (_plan == null || targetChanged) {
+        _plan = engine.plan(base, source);
+        _planStartSource = base;
+        _planStartPaintStyle = base.paintStyle;
+      }
+      _planTargetPaintStyle = source.paintStyle;
       _outputs ??= allocateOutputs(_plan!);
       _closed ??= <bool>[for (final item in _plan!.items) item.closed];
       interpolatePlan(_plan!, t, _outputs!, strategy: interpolation);
@@ -343,7 +359,14 @@ final class MeldIconController extends ChangeNotifier {
       _targetPathsSource = source;
       _targetPaths = iconToCubics(source);
       _progress = t;
+      final endpoint = t >= 1 - 1e-6 ? source : _planStartSource ?? base;
+      _current = endpoint;
+      _currentPaintStyle = endpoint.paintStyle;
       _velocity = 0;
+      _spring.target = 1;
+      _spring.position = t;
+      _spring.velocity = 0;
+      _spring.running = false;
       _stopTicker();
       _status = t == 1 ? MeldIconStatus.completed : MeldIconStatus.paused;
       notifyListeners();
@@ -360,16 +383,73 @@ final class MeldIconController extends ChangeNotifier {
   }
 
   void resume() {
-    if (_status != MeldIconStatus.paused || _ticker == null) return;
+    if (_status != MeldIconStatus.paused) return;
+    if (!_spring.running) {
+      _spring.retarget(_spring.target);
+      _transition ??= Completer<MeldTransitionResult>();
+    }
     _status = MeldIconStatus.running;
     _lastTick = null;
-    _ticker!.start();
+    _ticker?.start();
     notifyListeners();
+    if (_ticker == null) _finishAtSpringTarget();
+  }
+
+  /// Reverses the current transition while preserving its geometry and
+  /// velocity. At a settled endpoint it returns to the immediately previous
+  /// endpoint, if one exists.
+  Future<MeldTransitionResult> reverse({
+    SpringConfig? spring,
+    SpringPreset? preset,
+  }) {
+    _ensureAlive();
+    final plan = _plan;
+    final outputs = _outputs;
+    if (plan != null && outputs != null && _target != null) {
+      final atStart = _progress <= 1e-6;
+      final atEnd = _progress >= 1 - 1e-6;
+      final nextTarget = atStart && _status != MeldIconStatus.running
+          ? 1.0
+          : atEnd && _status != MeldIconStatus.running
+              ? 0.0
+              : (_spring.target == 1 ? 0.0 : 1.0);
+      final config =
+          spring ?? (preset == null ? _spring.config : springPreset(preset));
+      _spring.configure(config);
+      if (_motionDisabled) {
+        _prepareReversePaintStyles();
+        _spring.retarget(nextTarget);
+        _finishAtSpringTarget();
+        return Future.value(
+            const MeldTransitionResult(MeldTransitionEnd.completed));
+      }
+      _prepareReversePaintStyles();
+      _spring.retarget(nextTarget);
+      final transition = _transition ??= Completer<MeldTransitionResult>();
+      final future = transition.future;
+      _status = MeldIconStatus.running;
+      _lastTick = null;
+      _ticker?.start();
+      notifyListeners();
+      if (_ticker == null) _finishAtSpringTarget();
+      return future;
+    }
+
+    final previous = _previousSource;
+    if (previous == null) {
+      return Future.value(
+          const MeldTransitionResult(MeldTransitionEnd.completed));
+    }
+    return morphTo(previous, spring: spring, preset: preset);
   }
 
   void reset() {
     if (_current != null) set(_current!);
   }
+
+  bool get _motionDisabled =>
+      motionMode == MeldMotionMode.never ||
+      (motionMode == MeldMotionMode.user && userAnimationsDisabled);
 
   Future<MeldTransitionResult> playSequence(Iterable<MeldSource> sources,
       {SpringPreset preset = SpringPreset.snappy}) async {
@@ -390,6 +470,8 @@ final class MeldIconController extends ChangeNotifier {
     _plan = null;
     _outputs = null;
     _closed = null;
+    _previousSource = null;
+    _planStartSource = null;
     super.dispose();
   }
 
@@ -443,23 +525,7 @@ final class MeldIconController extends ChangeNotifier {
     notifyListeners();
     if (settled) {
       _stopTicker();
-      final destination = _target;
-      if (destination != null) {
-        _current = destination;
-        _currentPaintStyle = destination.paintStyle;
-        _targetPaintStyle = _currentPaintStyle;
-        _currentPaths = iconToCubics(destination);
-        _targetPathsSource = destination;
-        _targetPaths = _currentPaths;
-      }
-      _plan = null;
-      _outputs = null;
-      _closed = null;
-      _progress = 1;
-      _velocity = 0;
-      _status = MeldIconStatus.completed;
-      _completePrevious(MeldTransitionEnd.completed);
-      notifyListeners();
+      _finishAtSpringTarget();
     }
   }
 
@@ -507,23 +573,38 @@ final class MeldIconController extends ChangeNotifier {
   }
 
   void _finishImmediately() {
-    final destination = _target;
+    _finishAtSpringTarget();
+  }
+
+  void _finishAtSpringTarget() {
+    final movingForward = _spring.target == 1;
+    final destination = movingForward ? _target : _planStartSource ?? _current;
+    if (movingForward) {
+      if (_planStartSource != null) _previousSource = _planStartSource;
+    } else if (_target != null) {
+      _previousSource = _target;
+    }
     if (destination != null) {
       _current = destination;
       _currentPaintStyle = destination.paintStyle;
       _targetPaintStyle = _currentPaintStyle;
       _currentPaths = iconToCubics(destination);
-      _targetPathsSource = destination;
-      _targetPaths = _currentPaths;
+      if (movingForward) {
+        _target = destination;
+        _targetPathsSource = destination;
+        _targetPaths = _currentPaths;
+      }
     }
-    _plan = null;
-    _outputs = null;
-    _closed = null;
-    _progress = 1;
+    _progress = _spring.target;
     _velocity = 0;
     _status = MeldIconStatus.completed;
     _completePrevious(MeldTransitionEnd.completed);
     notifyListeners();
+  }
+
+  void _prepareReversePaintStyles() {
+    _currentPaintStyle = _planStartPaintStyle;
+    _targetPaintStyle = _planTargetPaintStyle;
   }
 
   void _ensureAlive() {

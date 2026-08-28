@@ -56,6 +56,9 @@ await controller.morphTo(MenuButton.close, preset: SpringPreset.snappy);
 // Scrub mode: no ticker, no hidden state.
 controller.seek(MenuButton.close, 0.72);
 
+// Reverse the same geometry plan from a running, paused, or settled state.
+await controller.reverse(preset: SpringPreset.snappy);
+
 // Sequence mode: transitions remain composable.
 await controller.playSequence([MenuButton.menu, MenuButton.close]);
 ```

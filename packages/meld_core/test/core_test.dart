@@ -44,6 +44,27 @@ void main() {
     expect(spring.velocity, closeTo(0, 0.02));
   });
 
+  test('spring reverses its target without resetting position or velocity', () {
+    final spring = MeldSpring(springPreset(SpringPreset.snappy));
+    spring.start();
+    spring.step(0.12);
+    final position = spring.position;
+    final velocity = spring.velocity;
+
+    spring.reverse();
+
+    expect(spring.target, 0);
+    expect(spring.position, position);
+    expect(spring.velocity, velocity);
+    var settled = false;
+    for (var i = 0; i < 600 && !settled; i++) {
+      settled = spring.step(1 / 60);
+    }
+    expect(settled, isTrue);
+    expect(spring.position, closeTo(0, 0.001));
+    expect(spring.velocity, closeTo(0, 0.02));
+  });
+
   test('closed paths preserve topology and emerge rotation', () {
     final square = GeometrySource(<GeometryNode>[
       GeometryNode(
