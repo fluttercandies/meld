@@ -836,7 +836,7 @@ final class MeldIconPainter extends CustomPainter {
   final ui.Path _closedPath = ui.Path()..fillType = ui.PathFillType.evenOdd;
   final ui.Path _openPath = ui.Path();
   final ui.Path _segmentPath = ui.Path();
-  final Set<int> _filledSourceIndices = <int>{};
+  final Set<int> _filledContourIndices = <int>{};
   double _limitedControlX = 0;
   double _limitedControlY = 0;
 
@@ -865,26 +865,35 @@ final class MeldIconPainter extends CustomPainter {
     var needsClosedPath = paintStyle == MeldPaintStyle.both;
     var needsOpenPath = false;
     final plan = controller._plan;
+    final currentPaintStyle = plan == null
+        ? controller.currentPaintStyle
+        : controller._planStartPaintStyle;
+    final targetPaintStyle = plan == null
+        ? controller.targetPaintStyle
+        : controller._planTargetPaintStyle;
+    final sourceHasFill = _fillWeight(currentPaintStyle) > 1e-6;
+    final targetHasFill = _fillWeight(targetPaintStyle) > 1e-6;
+    final hasSurjectiveFillPairing = plan != null &&
+        plan.diagnostics.sourceSubpaths != plan.diagnostics.targetSubpaths;
     final deduplicateFillContours = paintStyle == MeldPaintStyle.original &&
-        plan != null &&
-        plan.diagnostics.sourceSubpaths < plan.diagnostics.targetSubpaths;
-    final filledSourceIndices =
-        deduplicateFillContours ? (_filledSourceIndices..clear()) : null;
+        hasSurjectiveFillPairing &&
+        (sourceHasFill || targetHasFill);
+    final deduplicateBySource = deduplicateFillContours &&
+        (sourceHasFill != targetHasFill
+            ? sourceHasFill
+            : plan.diagnostics.sourceSubpaths <
+                plan.diagnostics.targetSubpaths);
+    final filledContourIndices =
+        deduplicateFillContours ? (_filledContourIndices..clear()) : null;
     if (paintStyle == MeldPaintStyle.original) {
-      final current = controller._plan == null
-          ? controller.currentPaintStyle
-          : controller._planStartPaintStyle;
-      final target = controller._plan == null
-          ? controller.targetPaintStyle
-          : controller._planTargetPaintStyle;
       final fillOpacity = _lerp(
-        _fillWeight(current),
-        _fillWeight(target),
+        _fillWeight(currentPaintStyle),
+        _fillWeight(targetPaintStyle),
         progress.clamp(0, 1).toDouble(),
       );
       final strokeOpacity = _lerp(
-        _strokeWeight(current),
-        _strokeWeight(target),
+        _strokeWeight(currentPaintStyle),
+        _strokeWeight(targetPaintStyle),
         progress.clamp(0, 1).toDouble(),
       );
       needsClosedPath = fillOpacity > 1e-6;
@@ -904,9 +913,12 @@ final class MeldIconPainter extends CustomPainter {
           // open contour. Canvas fill implicitly closes such a subpath, which
           // keeps the filled source visible during the flight without adding
           // a closing edge to the stroke path.
-          final sourceIndex = plan?.items[i].sourceIndex ?? i;
-          final shouldFill = filledSourceIndices == null ||
-              filledSourceIndices.add(sourceIndex);
+          final item = plan == null ? null : plan.items[i];
+          final contourIndex = deduplicateBySource
+              ? item?.sourceIndex ?? i
+              : item?.targetIndex ?? i;
+          final shouldFill = filledContourIndices == null ||
+              filledContourIndices.add(contourIndex);
           if (needsClosedPath &&
               (closed[i] || paintStyle == MeldPaintStyle.original) &&
               shouldFill) {
@@ -999,10 +1011,15 @@ final class MeldIconPainter extends CustomPainter {
       canvas.drawPath(closedPath, _fillPaint);
     }
     if (strokeOpacity > 1e-6) {
+      // A fading outline should contract together with its opacity. Keeping
+      // the full stroke width while alpha approaches zero leaves a visible
+      // halo outside a nearly-complete filled contour.
+      _strokePaint.strokeWidth = strokeWidth * strokeOpacity;
       _strokePaint.color = _withOpacity(strokeOpacity);
       canvas.drawPath(allPath, _strokePaint);
     }
     if (hasOpenContours && strokeOpacity <= 1e-6 && fillOpacity > 1e-6) {
+      _strokePaint.strokeWidth = strokeWidth;
       _strokePaint.color = _withOpacity(fillOpacity);
       canvas.drawPath(openPath, _strokePaint);
     }

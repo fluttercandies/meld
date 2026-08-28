@@ -401,6 +401,46 @@ void main() {
     controller.dispose();
   });
 
+  test('original contracts a fading outline instead of leaving a halo',
+      () async {
+    const geometry = 'M4 4H20V20H4Z';
+    final controller = MeldIconController(
+      initialSource: const PathDataSource(
+        geometry,
+        paintStyle: MeldSourcePaintStyle.outline,
+      ),
+    )..seek(
+        const PathDataSource(
+          geometry,
+          paintStyle: MeldSourcePaintStyle.fill,
+        ),
+        0.9,
+      );
+    final recorder = ui.PictureRecorder();
+    final painter = MeldIconPainter(
+      controller: controller,
+      viewBox: const MeldViewBox(0, 0, 24, 24),
+      color: Colors.white,
+      strokeWidth: 4,
+      strokeCap: ui.StrokeCap.square,
+      strokeJoin: ui.StrokeJoin.miter,
+      antiAlias: true,
+      paintStyle: MeldPaintStyle.original,
+    );
+
+    painter.paint(ui.Canvas(recorder), const Size(240, 240));
+    final image = await recorder.endRecording().toImage(240, 240);
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    image.dispose();
+
+    expect(
+      bytes!.getUint8((120 * 240 + 35) * 4 + 3),
+      lessThan(16),
+      reason: 'a nearly complete fill must not retain a full-width outline',
+    );
+    controller.dispose();
+  });
+
   test('original keeps fill visible when the paired target is open', () async {
     const filled = PathDataSource(
       'M4 4H20V20H4Z',
@@ -465,6 +505,44 @@ void main() {
         reason: 'fill disappeared at progress $progress',
       );
     }
+    controller.dispose();
+  });
+
+  test('original keeps the filled target visible from an open source',
+      () async {
+    const filledPlus = PathDataSource(
+      'M3 10H10V3H14V10H21V14H14V21H10V14H3Z',
+      paintStyle: MeldSourcePaintStyle.fill,
+    );
+    final controller = MeldIconController(
+      engine: MeldEngine(
+        sampling: const SamplingConfig(pointCount: 120, maxPointCount: 120),
+      ),
+      initialSource: _cross,
+    )..interpolation = MeldInterpolationStrategy.tangentAware;
+    controller.seek(filledPlus, 0.882);
+
+    final recorder = ui.PictureRecorder();
+    final painter = MeldIconPainter(
+      controller: controller,
+      viewBox: const MeldViewBox(0, 0, 24, 24),
+      color: Colors.white,
+      strokeWidth: 1,
+      strokeCap: ui.StrokeCap.square,
+      strokeJoin: ui.StrokeJoin.miter,
+      antiAlias: false,
+      paintStyle: MeldPaintStyle.original,
+    );
+    painter.paint(ui.Canvas(recorder), const Size(240, 240));
+    final image = await recorder.endRecording().toImage(240, 240);
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    image.dispose();
+
+    expect(
+      bytes!.getUint8((120 * 240 + 120) * 4 + 3),
+      greaterThan(200),
+      reason: 'filled target disappeared during reverse morph',
+    );
     controller.dispose();
   });
 
