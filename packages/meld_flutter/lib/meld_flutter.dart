@@ -715,11 +715,21 @@ final class MeldIconPainter extends CustomPainter {
       return (sharpAt - turn) / (sharpAt - softenUntil);
     }
 
-    double limitControl(double base, double control, double maxDistance) {
-      final delta = control - base;
-      final distance = delta.abs();
-      if (distance <= maxDistance || distance < 1e-9) return control;
-      return base + delta.sign * maxDistance;
+    (double, double) limitControl(
+      double baseX,
+      double baseY,
+      double controlX,
+      double controlY,
+      double maxDistance,
+    ) {
+      final deltaX = controlX - baseX;
+      final deltaY = controlY - baseY;
+      final distance = math.sqrt(deltaX * deltaX + deltaY * deltaY);
+      if (distance <= maxDistance || distance < 1e-9) {
+        return (controlX, controlY);
+      }
+      final scale = maxDistance / distance;
+      return (baseX + deltaX * scale, baseY + deltaY * scale);
     }
 
     final segmentCount = close ? count : count - 1;
@@ -742,15 +752,25 @@ final class MeldIconPainter extends CustomPainter {
         math.pow(endX - startX, 2) + math.pow(endY - startY, 2),
       );
       final maxHandle = chord * 0.5;
-      final limitedStartX = limitControl(startX, startHandleX, maxHandle);
-      final limitedStartY = limitControl(startY, startHandleY, maxHandle);
-      final limitedEndX = limitControl(endX, endHandleX, maxHandle);
-      final limitedEndY = limitControl(endY, endHandleY, maxHandle);
+      final limitedStart = limitControl(
+        startX,
+        startY,
+        startHandleX,
+        startHandleY,
+        maxHandle,
+      );
+      final limitedEnd = limitControl(
+        endX,
+        endY,
+        endHandleX,
+        endHandleY,
+        maxHandle,
+      );
       path.cubicTo(
-        limitedStartX,
-        limitedStartY,
-        limitedEndX,
-        limitedEndY,
+        limitedStart.$1,
+        limitedStart.$2,
+        limitedEnd.$1,
+        limitedEnd.$2,
         endX,
         endY,
       );
