@@ -893,7 +893,12 @@ final class MeldIconPainter extends CustomPainter {
           _segmentPath.reset();
           _appendFlightPath(_segmentPath, outputs[i], closed[i]);
           _allPath.addPath(_segmentPath, ui.Offset.zero);
-          if (needsClosedPath && closed[i]) {
+          // A source can carry fill semantics while its paired target is an
+          // open contour. Canvas fill implicitly closes such a subpath, which
+          // keeps the filled source visible during the flight without adding
+          // a closing edge to the stroke path.
+          if (needsClosedPath &&
+              (closed[i] || paintStyle == MeldPaintStyle.original)) {
             _closedPath.addPath(_segmentPath, ui.Offset.zero);
           } else if (needsOpenPath && !closed[i]) {
             _openPath.addPath(_segmentPath, ui.Offset.zero);
@@ -913,7 +918,8 @@ final class MeldIconPainter extends CustomPainter {
             _segmentPath.reset();
             _appendCubicPath(_segmentPath, cubic);
             _allPath.addPath(_segmentPath, ui.Offset.zero);
-            if (needsClosedPath && cubic.closed) {
+            if (needsClosedPath &&
+                (cubic.closed || paintStyle == MeldPaintStyle.original)) {
               _closedPath.addPath(_segmentPath, ui.Offset.zero);
             } else if (needsOpenPath && !cubic.closed) {
               _openPath.addPath(_segmentPath, ui.Offset.zero);

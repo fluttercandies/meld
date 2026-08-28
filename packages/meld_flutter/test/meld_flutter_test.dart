@@ -401,6 +401,35 @@ void main() {
     controller.dispose();
   });
 
+  test('original keeps fill visible when the paired target is open', () async {
+    const filled = PathDataSource(
+      'M4 4H20V20H4Z',
+      paintStyle: MeldSourcePaintStyle.fill,
+    );
+    const open = PathDataSource('M3 6H21M3 12H21M3 18H21');
+    final controller = MeldIconController(initialSource: filled);
+    controller.seek(open, 0.02);
+
+    final recorder = ui.PictureRecorder();
+    final painter = MeldIconPainter(
+      controller: controller,
+      viewBox: const MeldViewBox(0, 0, 24, 24),
+      color: Colors.white,
+      strokeWidth: 1,
+      strokeCap: ui.StrokeCap.square,
+      strokeJoin: ui.StrokeJoin.miter,
+      antiAlias: false,
+      paintStyle: MeldPaintStyle.original,
+    );
+    painter.paint(ui.Canvas(recorder), const Size(24, 24));
+    final image = await recorder.endRecording().toImage(24, 24);
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    image.dispose();
+
+    expect(bytes!.getUint8((12 * 24 + 12) * 4 + 3), greaterThan(200));
+    controller.dispose();
+  });
+
   test('original preserves paint weight when reversing mid-transition',
       () async {
     const geometry = 'M4 4H20V20H4Z';
