@@ -225,7 +225,7 @@ final class _StressCell extends StatelessWidget {
           size: 34,
           color: scheme.onSurface,
           strokeWidth: 1.6,
-          paintStyle: MeldPaintStyle.original,
+          paintStyle: MeldPaintStyle.outline,
           excludeFromSemantics: true,
         ),
       ),

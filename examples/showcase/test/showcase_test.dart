@@ -35,6 +35,11 @@ void main() {
     await tester.pump(const Duration(milliseconds: 16));
     final icons = tester.widgetList<MeldIcon>(find.byType(MeldIcon));
     expect(icons.every((icon) => icon.controller!.isAnimating), isTrue);
+    final firstController = icons.first.controller!;
+    final initialX = firstController.flightPaths!.first[0];
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(firstController.progress, greaterThan(0));
+    expect(firstController.flightPaths!.first[0], isNot(equals(initialX)));
 
     await tester.tap(
       find.byKey(const ValueKey<String>('stress-count-250')),

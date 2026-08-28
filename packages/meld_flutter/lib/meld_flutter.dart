@@ -861,30 +861,64 @@ final class MeldIconPainter extends CustomPainter {
     _closedPath.fillType = ui.PathFillType.evenOdd;
     _openPath.reset();
     var hasOpenContours = false;
+    var needsClosedPath = paintStyle == MeldPaintStyle.both;
+    var needsOpenPath = false;
+    if (paintStyle == MeldPaintStyle.original) {
+      final current = controller._plan == null
+          ? controller.currentPaintStyle
+          : controller._planStartPaintStyle;
+      final target = controller._plan == null
+          ? controller.targetPaintStyle
+          : controller._planTargetPaintStyle;
+      final fillOpacity = _lerp(
+        _fillWeight(current),
+        _fillWeight(target),
+        progress.clamp(0, 1).toDouble(),
+      );
+      final strokeOpacity = _lerp(
+        _strokeWeight(current),
+        _strokeWeight(target),
+        progress.clamp(0, 1).toDouble(),
+      );
+      needsClosedPath = fillOpacity > 1e-6;
+      needsOpenPath = fillOpacity > 1e-6 && strokeOpacity <= 1e-6;
+    }
     if (outputs != null && closed != null) {
-      for (var i = 0; i < outputs.length; i++) {
-        _segmentPath.reset();
-        _appendFlightPath(_segmentPath, outputs[i], closed[i]);
-        _allPath.addPath(_segmentPath, ui.Offset.zero);
-        if (closed[i]) {
-          _closedPath.addPath(_segmentPath, ui.Offset.zero);
-        } else {
-          _openPath.addPath(_segmentPath, ui.Offset.zero);
-          hasOpenContours = true;
+      if (!needsClosedPath && !needsOpenPath) {
+        for (var i = 0; i < outputs.length; i++) {
+          _appendFlightPath(_allPath, outputs[i], closed[i]);
+        }
+      } else {
+        for (var i = 0; i < outputs.length; i++) {
+          _segmentPath.reset();
+          _appendFlightPath(_segmentPath, outputs[i], closed[i]);
+          _allPath.addPath(_segmentPath, ui.Offset.zero);
+          if (needsClosedPath && closed[i]) {
+            _closedPath.addPath(_segmentPath, ui.Offset.zero);
+          } else if (needsOpenPath && !closed[i]) {
+            _openPath.addPath(_segmentPath, ui.Offset.zero);
+            hasOpenContours = true;
+          }
         }
       }
     } else {
       final paths = controller.canonicalPaths;
       if (paths != null) {
-        for (final cubic in paths) {
-          _segmentPath.reset();
-          _appendCubicPath(_segmentPath, cubic);
-          _allPath.addPath(_segmentPath, ui.Offset.zero);
-          if (cubic.closed) {
-            _closedPath.addPath(_segmentPath, ui.Offset.zero);
-          } else {
-            _openPath.addPath(_segmentPath, ui.Offset.zero);
-            hasOpenContours = true;
+        if (!needsClosedPath && !needsOpenPath) {
+          for (final cubic in paths) {
+            _appendCubicPath(_allPath, cubic);
+          }
+        } else {
+          for (final cubic in paths) {
+            _segmentPath.reset();
+            _appendCubicPath(_segmentPath, cubic);
+            _allPath.addPath(_segmentPath, ui.Offset.zero);
+            if (needsClosedPath && cubic.closed) {
+              _closedPath.addPath(_segmentPath, ui.Offset.zero);
+            } else if (needsOpenPath && !cubic.closed) {
+              _openPath.addPath(_segmentPath, ui.Offset.zero);
+              hasOpenContours = true;
+            }
           }
         }
       }
