@@ -21,6 +21,7 @@ export 'package:meld_core/meld_core.dart'
         MeldMotionMode,
         MeldPlan,
         MeldSource,
+        MeldSourcePaintStyle,
         MeldViewBox,
         PathDataSource,
         SamplingConfig,
@@ -35,13 +36,14 @@ enum MeldTransitionEnd { completed, cancelled, disposed, failed }
 /// Controls how normalized geometry is painted.
 enum MeldPaintStyle {
   /// Draws contour edges without filling their interiors.
-  stroke,
+  outline,
 
-  /// Fills compound contours while preserving nested holes.
-  fill,
+  /// Preserves the source's declared visual intent. Path and SVG sources use
+  /// outlines, while font glyph sources use filled compound contours.
+  original,
 
   /// Fills compound contours first, then draws their edges.
-  fillAndStroke,
+  both,
 }
 
 final class MeldTransitionResult {
@@ -56,7 +58,7 @@ final class MeldIconThemeData {
     this.strokeCap = ui.StrokeCap.round,
     this.strokeJoin = ui.StrokeJoin.round,
     this.antiAlias = true,
-    this.paintStyle = MeldPaintStyle.stroke,
+    this.paintStyle = MeldPaintStyle.original,
     this.motionMode = MeldMotionMode.user,
     this.interpolation = MeldInterpolationStrategy.polar,
   }) : assert(strokeWidth >= 0);
@@ -166,6 +168,8 @@ final class MeldIconController extends ChangeNotifier {
   List<Float64List>? _outputs;
   List<bool>? _closed;
   List<CubicPath>? _currentPaths;
+  List<CubicPath>? _targetPaths;
+  MeldSource? _targetPathsSource;
   MeldSpring _spring = MeldSpring();
   Ticker? _ticker;
   Duration? _lastTick;
@@ -181,6 +185,10 @@ final class MeldIconController extends ChangeNotifier {
   MeldIconStatus get status => _status;
   MeldSource? get currentSource => _current;
   MeldSource? get target => _target ?? _current;
+  MeldSourcePaintStyle get currentPaintStyle =>
+      _current?.paintStyle ?? MeldSourcePaintStyle.outline;
+  MeldSourcePaintStyle get targetPaintStyle =>
+      (_target ?? _current)?.paintStyle ?? MeldSourcePaintStyle.outline;
   double get progress => _progress;
   double get velocity => _velocity;
   MeldException? get lastError => _lastError;
@@ -192,6 +200,24 @@ final class MeldIconController extends ChangeNotifier {
     if (_currentPaths == null && _current != null)
       _currentPaths = iconToCubics(_current!);
     return _currentPaths;
+  }
+
+  /// Returns the canonical cubic paths for the endpoint currently being
+  /// displayed. Resting endpoints use canonical curves instead of sampled
+  /// flight polylines, keeping small icons crisp and continuous.
+  List<CubicPath>? get canonicalPaths {
+    if (_progress >= 1 - 1e-6) return _targetCanonicalPaths;
+    return currentPaths;
+  }
+
+  List<CubicPath>? get _targetCanonicalPaths {
+    final source = _target ?? _current;
+    if (source == null) return null;
+    if (!identical(_targetPathsSource, source)) {
+      _targetPathsSource = source;
+      _targetPaths = iconToCubics(source);
+    }
+    return _targetPaths;
   }
 
   void attach(TickerProvider vsync) {
@@ -244,6 +270,8 @@ final class MeldIconController extends ChangeNotifier {
       _outputs = allocateOutputs(_plan!);
       _closed = <bool>[for (final item in _plan!.items) item.closed];
       _target = source;
+      _targetPathsSource = source;
+      _targetPaths = iconToCubics(source);
       final inheritedVelocity = _velocity;
       _spring = MeldSpring(config)..start(inheritedVelocity: inheritedVelocity);
       _progress = 0;
@@ -274,6 +302,8 @@ final class MeldIconController extends ChangeNotifier {
       _current = source;
       _currentPaths = iconToCubics(source);
       _target = source;
+      _targetPathsSource = source;
+      _targetPaths = _currentPaths;
       _plan = null;
       _outputs = null;
       _closed = null;
@@ -300,6 +330,8 @@ final class MeldIconController extends ChangeNotifier {
       _closed ??= <bool>[for (final item in _plan!.items) item.closed];
       interpolatePlan(_plan!, t, _outputs!, strategy: interpolation);
       _target = source;
+      _targetPathsSource = source;
+      _targetPaths = iconToCubics(source);
       _progress = t;
       _velocity = 0;
       _stopTicker();
@@ -403,7 +435,11 @@ final class MeldIconController extends ChangeNotifier {
       _stopTicker();
       final destination = _target;
       if (destination != null) _current = destination;
-      if (destination != null) _currentPaths = iconToCubics(destination);
+      if (destination != null) {
+        _currentPaths = iconToCubics(destination);
+        _targetPathsSource = destination;
+        _targetPaths = _currentPaths;
+      }
       _plan = null;
       _outputs = null;
       _closed = null;
@@ -463,6 +499,8 @@ final class MeldIconController extends ChangeNotifier {
     if (destination != null) {
       _current = destination;
       _currentPaths = iconToCubics(destination);
+      _targetPathsSource = destination;
+      _targetPaths = _currentPaths;
     }
     _plan = null;
     _outputs = null;
@@ -511,55 +549,211 @@ final class MeldIconPainter extends CustomPainter {
         (size.width - viewBox.width * scale) / 2 - viewBox.minX * scale,
         (size.height - viewBox.height * scale) / 2 - viewBox.minY * scale);
     canvas.scale(scale, scale);
-    final fills = paintStyle == MeldPaintStyle.fillAndStroke ||
-        paintStyle == MeldPaintStyle.fill;
     final paint = ui.Paint()
       ..color = color
-      ..style = fills ? ui.PaintingStyle.fill : ui.PaintingStyle.stroke
+      ..style = ui.PaintingStyle.stroke
       ..strokeWidth = strokeWidth
       ..strokeCap = strokeCap
       ..strokeJoin = strokeJoin
       ..isAntiAlias = antiAlias;
-    final outputs = controller.flightPaths;
+    final progress = controller.progress;
+    final atCanonicalEndpoint = progress <= 1e-6 || progress >= 1 - 1e-6;
+    final outputs = atCanonicalEndpoint ? null : controller.flightPaths;
     final closed = controller.closedPaths;
-    final compoundPath = ui.Path()..fillType = ui.PathFillType.evenOdd;
+    final allPath = ui.Path();
+    final closedPath = ui.Path()..fillType = ui.PathFillType.evenOdd;
+    final openPath = ui.Path();
+    var hasOpenContours = false;
     if (outputs != null && closed != null) {
       for (var i = 0; i < outputs.length; i++) {
-        compoundPath.addPath(
-          _polyline(outputs[i], closed[i]),
-          ui.Offset.zero,
-        );
+        final path = _flightPath(outputs[i], closed[i]);
+        allPath.addPath(path, ui.Offset.zero);
+        if (closed[i]) {
+          closedPath.addPath(path, ui.Offset.zero);
+        } else {
+          openPath.addPath(path, ui.Offset.zero);
+          hasOpenContours = true;
+        }
       }
     } else {
-      final paths = controller.currentPaths;
+      final paths = controller.canonicalPaths;
       if (paths != null) {
         for (final cubic in paths) {
-          compoundPath.addPath(_cubicPath(cubic), ui.Offset.zero);
+          final path = _cubicPath(cubic);
+          allPath.addPath(path, ui.Offset.zero);
+          if (cubic.closed) {
+            closedPath.addPath(path, ui.Offset.zero);
+          } else {
+            openPath.addPath(path, ui.Offset.zero);
+            hasOpenContours = true;
+          }
         }
       }
     }
-    _draw(canvas, compoundPath, paint);
+    _draw(canvas, allPath, closedPath, openPath, hasOpenContours, paint);
     canvas.restore();
   }
 
-  void _draw(ui.Canvas canvas, ui.Path path, ui.Paint paint) {
-    canvas.drawPath(path, paint);
-    if (paintStyle == MeldPaintStyle.fillAndStroke) {
-      final stroke = ui.Paint()
-        ..color = color
-        ..style = ui.PaintingStyle.stroke
-        ..strokeWidth = strokeWidth
-        ..strokeCap = strokeCap
-        ..strokeJoin = strokeJoin
-        ..isAntiAlias = antiAlias;
-      canvas.drawPath(path, stroke);
+  void _draw(
+    ui.Canvas canvas,
+    ui.Path allPath,
+    ui.Path closedPath,
+    ui.Path openPath,
+    bool hasOpenContours,
+    ui.Paint paint,
+  ) {
+    switch (paintStyle) {
+      case MeldPaintStyle.outline:
+        canvas.drawPath(allPath, paint);
+      case MeldPaintStyle.original:
+        _drawOriginal(
+          canvas,
+          allPath,
+          closedPath,
+          openPath,
+          hasOpenContours,
+          paint,
+        );
+      case MeldPaintStyle.both:
+        final fill = _paint(ui.PaintingStyle.fill);
+        canvas.drawPath(closedPath, fill);
+        canvas.drawPath(allPath, paint);
     }
   }
 
-  ui.Path _polyline(Float64List points, bool close) {
+  void _drawOriginal(
+    ui.Canvas canvas,
+    ui.Path allPath,
+    ui.Path closedPath,
+    ui.Path openPath,
+    bool hasOpenContours,
+    ui.Paint paint,
+  ) {
+    final currentIsFill =
+        controller.currentPaintStyle == MeldSourcePaintStyle.fill;
+    final targetIsFill =
+        controller.targetPaintStyle == MeldSourcePaintStyle.fill;
+    final progress = controller.progress.clamp(0, 1).toDouble();
+    if (currentIsFill == targetIsFill) {
+      if (currentIsFill) {
+        canvas.drawPath(closedPath, _paint(ui.PaintingStyle.fill));
+        if (hasOpenContours) canvas.drawPath(openPath, paint);
+      } else {
+        canvas.drawPath(allPath, paint);
+      }
+      return;
+    }
+
+    final fillOpacity = targetIsFill ? progress : 1 - progress;
+    final strokeOpacity = 1 - fillOpacity;
+    if (fillOpacity > 1e-6) {
+      canvas.drawPath(
+        closedPath,
+        _paint(ui.PaintingStyle.fill, opacity: fillOpacity),
+      );
+    }
+    if (strokeOpacity > 1e-6) {
+      canvas.drawPath(
+        allPath,
+        _paint(ui.PaintingStyle.stroke, opacity: strokeOpacity),
+      );
+    }
+    if (hasOpenContours) canvas.drawPath(openPath, paint);
+  }
+
+  ui.Paint _paint(ui.PaintingStyle style, {double opacity = 1}) {
+    return ui.Paint()
+      ..color = color.withValues(alpha: color.a * opacity)
+      ..style = style
+      ..strokeWidth = strokeWidth
+      ..strokeCap = strokeCap
+      ..strokeJoin = strokeJoin
+      ..isAntiAlias = antiAlias;
+  }
+
+  ui.Path _flightPath(Float64List points, bool close) {
+    final count = points.length ~/ 2;
     final path = ui.Path()..moveTo(points[0], points[1]);
-    for (var i = 2; i < points.length; i += 2) {
-      path.lineTo(points[i], points[i + 1]);
+    if (count < 2) return path;
+
+    double coordinate(int index, int axis) {
+      if (close) {
+        index %= count;
+      } else {
+        index = index.clamp(0, count - 1);
+      }
+      return points[index * 2 + axis];
+    }
+
+    double cornerWeight(int index) {
+      if (!close && (index <= 0 || index >= count - 1)) return 1;
+      final previousX = coordinate(index - 1, 0);
+      final previousY = coordinate(index - 1, 1);
+      final currentX = coordinate(index, 0);
+      final currentY = coordinate(index, 1);
+      final nextX = coordinate(index + 1, 0);
+      final nextY = coordinate(index + 1, 1);
+      final incomingX = currentX - previousX;
+      final incomingY = currentY - previousY;
+      final outgoingX = nextX - currentX;
+      final outgoingY = nextY - currentY;
+      final incomingLength = math.sqrt(
+        incomingX * incomingX + incomingY * incomingY,
+      );
+      final outgoingLength = math.sqrt(
+        outgoingX * outgoingX + outgoingY * outgoingY,
+      );
+      if (incomingLength < 1e-9 || outgoingLength < 1e-9) return 0;
+      final turn = math.atan2(
+        (incomingX * outgoingY - incomingY * outgoingX).abs(),
+        incomingX * outgoingX + incomingY * outgoingY,
+      );
+      const softenUntil = 0.28;
+      const sharpAt = 0.62;
+      if (turn <= softenUntil) return 1;
+      if (turn >= sharpAt) return 0;
+      return (sharpAt - turn) / (sharpAt - softenUntil);
+    }
+
+    double limitControl(double base, double control, double maxDistance) {
+      final delta = control - base;
+      final distance = delta.abs();
+      if (distance <= maxDistance || distance < 1e-9) return control;
+      return base + delta.sign * maxDistance;
+    }
+
+    final segmentCount = close ? count : count - 1;
+    for (var segment = 0; segment < segmentCount; segment++) {
+      final startX = coordinate(segment, 0);
+      final startY = coordinate(segment, 1);
+      final endX = coordinate(segment + 1, 0);
+      final endY = coordinate(segment + 1, 1);
+      final previousX = coordinate(segment - 1, 0);
+      final previousY = coordinate(segment - 1, 1);
+      final nextNextX = coordinate(segment + 2, 0);
+      final nextNextY = coordinate(segment + 2, 1);
+      final startWeight = cornerWeight(segment);
+      final endWeight = cornerWeight(segment + 1);
+      final startHandleX = startX + (endX - previousX) * startWeight / 6;
+      final startHandleY = startY + (endY - previousY) * startWeight / 6;
+      final endHandleX = endX - (nextNextX - startX) * endWeight / 6;
+      final endHandleY = endY - (nextNextY - startY) * endWeight / 6;
+      final chord = math.sqrt(
+        math.pow(endX - startX, 2) + math.pow(endY - startY, 2),
+      );
+      final maxHandle = chord * 0.5;
+      final limitedStartX = limitControl(startX, startHandleX, maxHandle);
+      final limitedStartY = limitControl(startY, startHandleY, maxHandle);
+      final limitedEndX = limitControl(endX, endHandleX, maxHandle);
+      final limitedEndY = limitControl(endY, endHandleY, maxHandle);
+      path.cubicTo(
+        limitedStartX,
+        limitedStartY,
+        limitedEndX,
+        limitedEndY,
+        endX,
+        endY,
+      );
     }
     if (close) path.close();
     return path;

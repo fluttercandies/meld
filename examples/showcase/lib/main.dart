@@ -254,7 +254,7 @@ class _ShowcaseHomeState extends State<ShowcaseHome> {
   var _fromId = 'path-menu';
   var _toId = 'path-close';
   var _quality = 64;
-  var _paintStyle = MeldPaintStyle.fillAndStroke;
+  var _paintStyle = MeldPaintStyle.original;
   var _stiffness = 420.0;
   var _damping = 30.0;
   List<_IconOption> _fontOptions = const <_IconOption>[];
@@ -284,9 +284,14 @@ class _ShowcaseHomeState extends State<ShowcaseHome> {
 
   String get _transitionLabel => '${_fromOption.name} → ${_toOption.name}';
 
-  bool get _hasShapeChange =>
-      canonicalPathData(_fromOption.source) !=
-      canonicalPathData(_toOption.source);
+  bool get _hasShapeChange {
+    if (canonicalPathData(_fromOption.source) !=
+        canonicalPathData(_toOption.source)) {
+      return true;
+    }
+    return _paintStyle == MeldPaintStyle.original &&
+        _fromOption.source.paintStyle != _toOption.source.paintStyle;
+  }
 
   int get _pairIndex => _pairs.indexWhere(
         (pair) => pair.fromId == _fromId && pair.toId == _toId,
@@ -470,13 +475,17 @@ class _ShowcaseHomeState extends State<ShowcaseHome> {
   Widget _narrowLayout() => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          _preview(iconSize: 152, minHeight: 340),
+          _preview(iconSize: 152, minHeight: 340, showPlayButton: true),
           const SizedBox(height: 20),
           _controls(),
         ],
       );
 
-  Widget _preview({required double iconSize, required double minHeight}) {
+  Widget _preview({
+    required double iconSize,
+    required double minHeight,
+    bool showPlayButton = true,
+  }) {
     return Container(
       constraints: BoxConstraints(minHeight: minHeight),
       decoration: BoxDecoration(
@@ -515,6 +524,13 @@ class _ShowcaseHomeState extends State<ShowcaseHome> {
           right: 12,
           child: MeldDiagnosticsOverlay(controller: _controller),
         ),
+        if (showPlayButton)
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 16,
+            child: _primaryPlayButton(),
+          ),
       ]),
     );
   }
@@ -529,6 +545,8 @@ class _ShowcaseHomeState extends State<ShowcaseHome> {
           Text(
               'Choose each endpoint, scrub the path, or play it with a physical spring.',
               style: Theme.of(context).textTheme.bodyMedium),
+          const SizedBox(height: 12),
+          _renderControls(),
           const SizedBox(height: 14),
           Text('Quick pairs', style: Theme.of(context).textTheme.labelLarge),
           const SizedBox(height: 8),
@@ -550,6 +568,7 @@ class _ShowcaseHomeState extends State<ShowcaseHome> {
                   pair: _pairs[index],
                   from: _findOption(_pairs[index].fromId)!,
                   to: _findOption(_pairs[index].toId)!,
+                  paintStyle: _paintStyle,
                   selected: index == _pairIndex,
                   onTap: () => _selectPair(index),
                 ),
@@ -582,7 +601,6 @@ class _ShowcaseHomeState extends State<ShowcaseHome> {
             animation: _controller,
             builder: (context, child) {
               final progress = _controller.progress.clamp(0, 1).toDouble();
-              final isRunning = _controller.status == MeldIconStatus.running;
               final isNoOp = !_hasShapeChange;
               return Column(
                 children: <Widget>[
@@ -618,34 +636,12 @@ class _ShowcaseHomeState extends State<ShowcaseHome> {
                         ),
                       ),
                     ),
-                  const SizedBox(height: 4),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      key: const ValueKey<String>('play-button'),
-                      onPressed: isRunning || isNoOp ? null : _play,
-                      icon: Icon(
-                        isRunning
-                            ? Icons.motion_photos_on_rounded
-                            : Icons.play_arrow_rounded,
-                      ),
-                      label: Text(
-                        isRunning
-                            ? 'Playing transition…'
-                            : isNoOp
-                                ? 'Choose different endpoints'
-                                : 'Play spring transition',
-                      ),
-                    ),
-                  ),
                 ],
               );
             },
           ),
           const SizedBox(height: 14),
           _springControls(),
-          const SizedBox(height: 8),
-          _renderControls(),
           const SizedBox(height: 12),
           const Text(
               'Reduced motion keeps the endpoint exact and removes the flight automatically.'),
@@ -661,6 +657,7 @@ class _ShowcaseHomeState extends State<ShowcaseHome> {
             id: 'from-endpoint',
             eyebrow: 'Start',
             option: _fromOption,
+            paintStyle: _paintStyle,
             selected: _activeEndpoint == _Endpoint.from,
             onTap: () => _setActiveEndpoint(_Endpoint.from),
           ),
@@ -680,6 +677,7 @@ class _ShowcaseHomeState extends State<ShowcaseHome> {
             id: 'to-endpoint',
             eyebrow: 'End',
             option: _toOption,
+            paintStyle: _paintStyle,
             selected: _activeEndpoint == _Endpoint.to,
             onTap: () => _setActiveEndpoint(_Endpoint.to),
           ),
@@ -738,11 +736,41 @@ class _ShowcaseHomeState extends State<ShowcaseHome> {
             return _OptionTile(
               id: '${_activeEndpoint == _Endpoint.from ? 'from' : 'to'}-${option.id}',
               option: option,
+              paintStyle: _paintStyle,
               selected: option.id ==
                   (_activeEndpoint == _Endpoint.from ? _fromId : _toId),
               onTap: () => _selectEndpoint(option),
             );
           },
+        );
+      },
+    );
+  }
+
+  Widget _primaryPlayButton() {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final isRunning = _controller.status == MeldIconStatus.running;
+        final isNoOp = !_hasShapeChange;
+        return SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            key: const ValueKey<String>('play-button'),
+            onPressed: isRunning || isNoOp ? null : _play,
+            icon: Icon(
+              isRunning
+                  ? Icons.motion_photos_on_rounded
+                  : Icons.play_arrow_rounded,
+            ),
+            label: Text(
+              isRunning
+                  ? 'Playing transition…'
+                  : isNoOp
+                      ? 'Choose different endpoints'
+                      : 'Play spring transition',
+            ),
+          ),
         );
       },
     );
@@ -803,17 +831,18 @@ class _ShowcaseHomeState extends State<ShowcaseHome> {
         const SizedBox(height: 8),
         SegmentedButton<MeldPaintStyle>(
           key: const ValueKey<String>('paint-style-selector'),
+          showSelectedIcon: false,
           segments: const <ButtonSegment<MeldPaintStyle>>[
             ButtonSegment(
-              value: MeldPaintStyle.stroke,
+              value: MeldPaintStyle.outline,
               label: Text('Outline'),
             ),
             ButtonSegment(
-              value: MeldPaintStyle.fill,
-              label: Text('Fill'),
+              value: MeldPaintStyle.original,
+              label: Text('Original'),
             ),
             ButtonSegment(
-              value: MeldPaintStyle.fillAndStroke,
+              value: MeldPaintStyle.both,
               label: Text('Both'),
             ),
           ],
@@ -844,6 +873,7 @@ class _ShowcaseHomeState extends State<ShowcaseHome> {
         const SizedBox(height: 8),
         SegmentedButton<int>(
           key: const ValueKey<String>('quality-selector'),
+          showSelectedIcon: false,
           segments: const <ButtonSegment<int>>[
             ButtonSegment(value: 32, label: Text('Fast')),
             ButtonSegment(value: 64, label: Text('Balanced')),
@@ -884,6 +914,7 @@ class _EndpointCard extends StatelessWidget {
     required this.id,
     required this.eyebrow,
     required this.option,
+    required this.paintStyle,
     required this.selected,
     required this.onTap,
   });
@@ -891,6 +922,7 @@ class _EndpointCard extends StatelessWidget {
   final String id;
   final String eyebrow;
   final _IconOption option;
+  final MeldPaintStyle paintStyle;
   final bool selected;
   final VoidCallback onTap;
 
@@ -926,7 +958,7 @@ class _EndpointCard extends StatelessWidget {
                   size: 30,
                   color: selected ? _MeldColors.ink : _MeldColors.inkMuted,
                   strokeWidth: 1.5,
-                  paintStyle: MeldPaintStyle.fillAndStroke,
+                  paintStyle: paintStyle,
                   excludeFromSemantics: true,
                 ),
                 const SizedBox(width: 8),
@@ -1009,12 +1041,14 @@ class _OptionTile extends StatelessWidget {
   const _OptionTile({
     required this.id,
     required this.option,
+    required this.paintStyle,
     required this.selected,
     required this.onTap,
   });
 
   final String id;
   final _IconOption option;
+  final MeldPaintStyle paintStyle;
   final bool selected;
   final VoidCallback onTap;
 
@@ -1050,7 +1084,7 @@ class _OptionTile extends StatelessWidget {
                   size: 25,
                   color: selected ? _MeldColors.ink : _MeldColors.inkMuted,
                   strokeWidth: 1.5,
-                  paintStyle: MeldPaintStyle.fillAndStroke,
+                  paintStyle: paintStyle,
                   excludeFromSemantics: true,
                 ),
                 const SizedBox(height: 3),
@@ -1081,6 +1115,7 @@ class _PairTile extends StatelessWidget {
     required this.pair,
     required this.from,
     required this.to,
+    required this.paintStyle,
     required this.selected,
     required this.onTap,
   });
@@ -1089,6 +1124,7 @@ class _PairTile extends StatelessWidget {
   final _IconPair pair;
   final _IconOption from;
   final _IconOption to;
+  final MeldPaintStyle paintStyle;
   final bool selected;
   final VoidCallback onTap;
 
@@ -1129,6 +1165,7 @@ class _PairTile extends StatelessWidget {
                       size: 22,
                       color: selected ? _MeldColors.ink : _MeldColors.inkMuted,
                       strokeWidth: 1.8,
+                      paintStyle: paintStyle,
                       excludeFromSemantics: true,
                     ),
                     Padding(
@@ -1146,6 +1183,7 @@ class _PairTile extends StatelessWidget {
                       size: 22,
                       color: selected ? _MeldColors.ink : _MeldColors.inkMuted,
                       strokeWidth: 1.8,
+                      paintStyle: paintStyle,
                       excludeFromSemantics: true,
                     ),
                   ],

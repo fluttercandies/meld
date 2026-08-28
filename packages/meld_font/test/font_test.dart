@@ -33,6 +33,10 @@ void main() {
     final paths = iconToCubics(source);
     expect(paths, isNotEmpty);
     expect(paths.every((item) => item.closed), isTrue);
+    expect(
+      source.paintStyle,
+      MeldSourcePaintStyle.fill,
+    );
     expect(paths.expand((item) => item.points).every((value) => value.isFinite),
         isTrue);
   });

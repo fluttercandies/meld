@@ -8,8 +8,9 @@ scientific notation.
 
 ## Filled SVG or glyphs look hollow
 
-Use `MeldPaintStyle.fill` or `fillAndStroke` for closed glyph geometry. The
-default stroke mode is intentionally optimized for line icons.
+Use `MeldPaintStyle.original` for source-faithful output, or `MeldPaintStyle.both`
+when a filled glyph also needs an outline. The explicit `outline` mode remains
+available for line icons and inspection.
 
 ## `unsupported-element` or `unsupported-transform`
 

@@ -21,7 +21,7 @@ mode fixed when comparing results.
 - Use adaptive sampling for general UI and raise `maxPointCount` only for
   detailed artwork.
 - Keep `MeldDiagnosticsOverlay` out of release layouts.
-- Use `MeldPaintStyle.fill` for filled glyphs instead of inflating them into
+- Use `MeldPaintStyle.original` for filled glyphs instead of inflating them into
   stroke paths.
 
 Plan and sample caches are separate bounded LRU caches. Clearing a controller

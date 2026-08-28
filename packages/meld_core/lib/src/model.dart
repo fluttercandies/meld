@@ -25,8 +25,20 @@ class MeldException extends FormatException {
   }
 }
 
+/// Describes the visual intent carried by a source when a widget uses its
+/// `original` paint mode.
+enum MeldSourcePaintStyle {
+  /// The source is normally rendered as a contour stroke.
+  outline,
+
+  /// The source is normally rendered as a filled compound contour.
+  fill,
+}
+
 sealed class MeldSource {
-  const MeldSource();
+  const MeldSource({this.paintStyle = MeldSourcePaintStyle.outline});
+
+  final MeldSourcePaintStyle paintStyle;
 }
 
 /// Raw SVG `d` data. The parser accepts all SVG path commands supported by
@@ -55,11 +67,18 @@ final class GeometrySource extends MeldSource {
 }
 
 /// A normalized cubic source, useful for font adapters and precomputed assets.
+/// Set [paintStyle] to [MeldSourcePaintStyle.fill] for compound contours such
+/// as font glyphs; the default keeps generic geometry as an outline source.
 final class CubicSource extends MeldSource {
-  CubicSource(Iterable<CubicPath> paths)
-      : paths = List<CubicPath>.unmodifiable(paths);
+  CubicSource(
+    Iterable<CubicPath> paths, {
+    this.paintStyle = MeldSourcePaintStyle.outline,
+  })  : paths = List<CubicPath>.unmodifiable(paths),
+        super(paintStyle: paintStyle);
 
   final List<CubicPath> paths;
+  @override
+  final MeldSourcePaintStyle paintStyle;
 }
 
 typedef MeldIconSource = MeldSource;

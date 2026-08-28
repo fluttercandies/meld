@@ -24,7 +24,7 @@ const icon = MeldIcon(
 );
 ```
 
-Use `progress` for deterministic scrubbing, `icon` for declarative transitions, or `MeldIconController` for commands and sequences. `MeldPaintStyle.fill`, `stroke`, and `fillAndStroke` cover both outline and filled geometry.
+Use `progress` for deterministic scrubbing, `icon` for declarative transitions, or `MeldIconController` for commands and sequences. `MeldPaintStyle.outline`, `original`, and `both` cover explicit outlines, source-faithful rendering, and combined fill-plus-outline output.
 
 ## Inputs and docs
 

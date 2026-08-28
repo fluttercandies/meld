@@ -51,7 +51,10 @@ MeldSource fontGlyphToSource(FontGlyphRef ref, {double grid = 24}) {
     }
     return CubicPath(points, closed: true);
   });
-  return CubicSource(normalized);
+  return CubicSource(
+    normalized,
+    paintStyle: MeldSourcePaintStyle.fill,
+  );
 }
 
 ({double minX, double minY, double maxX, double maxY}) _bounds(

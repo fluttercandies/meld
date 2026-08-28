@@ -60,7 +60,7 @@ controller.seek(MenuButton.close, 0.72);
 await controller.playSequence([MenuButton.menu, MenuButton.close]);
 ```
 
-使用 `MeldIconTheme` 统一视觉语言。`MeldPaintStyle.stroke` 绘制几何轮廓，`fill` 保留闭合字形的填充和孔洞，`fillAndStroke` 会先填充再描边。
+使用 `MeldIconTheme` 统一视觉语言。`MeldPaintStyle.outline` 始终绘制几何轮廓，`original` 保留输入源的原始意图（线性图标保持轮廓，字体 glyph 保持填充），`both` 会先填充闭合轮廓再描边。
 
 ## 输入格式
 
@@ -78,7 +78,7 @@ final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
 final home = Meld.sourceFromIconData(Icons.home_rounded, fontBytes: bytes);
 final homeIcon = MeldIcon(
   icon: home,
-  paintStyle: MeldPaintStyle.fillAndStroke,
+  paintStyle: MeldPaintStyle.original,
   label: '主页',
 );
 ```

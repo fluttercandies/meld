@@ -1,6 +1,6 @@
 # Meld Showcase
 
-An interactive inspection app for the Meld Flutter workspace. It demonstrates responsive layout, independent start/end icon selection, reusable quick-pair plans, path data, SVG markup, and real font glyph outlines from a bundled Cupertino TTF. Controlled scrubbing, spring parameters, outline/fill/both paint modes, quality presets, reduced-motion behavior, and live diagnostics are available in the same flow.
+An interactive inspection app for the Meld Flutter workspace. It demonstrates responsive layout, independent start/end icon selection, reusable quick-pair plans, path data, SVG markup, and real font glyph outlines from a bundled Cupertino TTF. Controlled scrubbing, spring parameters, outline/original/both paint modes, quality presets, reduced-motion behavior, and live diagnostics are available in the same flow.
 
 ```bash
 flutter run -d chrome

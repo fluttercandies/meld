@@ -357,7 +357,11 @@ MeldSource fitViewBox(MeldSource source, MeldViewBox viewBox,
     _ => iconToCubics(source),
   };
   final paths = _fitPaths(rawPaths, viewBox, grid: grid);
-  return CubicSource(paths);
+  final paintStyle = switch (source) {
+    CubicSource(:final paintStyle) => paintStyle,
+    _ => MeldSourcePaintStyle.outline,
+  };
+  return CubicSource(paths, paintStyle: paintStyle);
 }
 
 List<CubicPath> _fitPaths(List<CubicPath> paths, MeldViewBox? viewBox,

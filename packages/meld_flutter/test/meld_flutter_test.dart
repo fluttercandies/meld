@@ -1,4 +1,5 @@
 import 'dart:ui' as ui;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -38,8 +39,7 @@ void main() {
     );
   });
 
-  test('fillAndStroke fills closed geometry before drawing its outline',
-      () async {
+  test('both fills closed geometry before drawing its outline', () async {
     const square = PathDataSource('M4 4H20V20H4Z');
     final controller = MeldIconController(initialSource: square);
     final recorder = ui.PictureRecorder();
@@ -51,7 +51,7 @@ void main() {
       strokeCap: ui.StrokeCap.square,
       strokeJoin: ui.StrokeJoin.miter,
       antiAlias: false,
-      paintStyle: MeldPaintStyle.fillAndStroke,
+      paintStyle: MeldPaintStyle.both,
     );
 
     painter.paint(ui.Canvas(recorder), const Size(24, 24));
@@ -63,7 +63,107 @@ void main() {
     controller.dispose();
   });
 
-  test('compound paths preserve holes when filled', () async {
+  test('original preserves outline sources and fills filled sources', () async {
+    final outlineController = MeldIconController(
+        initialSource: const PathDataSource('M4 4H20V20H4Z'));
+    final outlineRecorder = ui.PictureRecorder();
+    final outlinePainter = MeldIconPainter(
+      controller: outlineController,
+      viewBox: const MeldViewBox(0, 0, 24, 24),
+      color: Colors.white,
+      strokeWidth: 1,
+      strokeCap: ui.StrokeCap.square,
+      strokeJoin: ui.StrokeJoin.miter,
+      antiAlias: false,
+      paintStyle: MeldPaintStyle.original,
+    );
+    outlinePainter.paint(ui.Canvas(outlineRecorder), const Size(24, 24));
+    final outlineImage = await outlineRecorder.endRecording().toImage(24, 24);
+    final outlineBytes =
+        await outlineImage.toByteData(format: ui.ImageByteFormat.rawRgba);
+    expect(outlineBytes!.getUint8((12 * 24 + 12) * 4 + 3), 0);
+    outlineController.dispose();
+
+    final filledSource = CubicSource(
+      <CubicPath>[
+        CubicPath(
+          Float64List.fromList(<double>[
+            4,
+            4,
+            4,
+            4,
+            20,
+            4,
+            20,
+            4,
+            20,
+            4,
+            20,
+            4,
+            20,
+            20,
+            20,
+            20,
+            20,
+            20,
+            4,
+            20,
+            4,
+            20,
+            4,
+            20,
+            4,
+            4,
+          ]),
+          closed: true,
+        ),
+      ],
+      paintStyle: MeldSourcePaintStyle.fill,
+    );
+    final filledController = MeldIconController(initialSource: filledSource);
+    final filledRecorder = ui.PictureRecorder();
+    final filledPainter = MeldIconPainter(
+      controller: filledController,
+      viewBox: const MeldViewBox(0, 0, 24, 24),
+      color: Colors.white,
+      strokeWidth: 1,
+      strokeCap: ui.StrokeCap.square,
+      strokeJoin: ui.StrokeJoin.miter,
+      antiAlias: false,
+      paintStyle: MeldPaintStyle.original,
+    );
+    filledPainter.paint(ui.Canvas(filledRecorder), const Size(24, 24));
+    final filledImage = await filledRecorder.endRecording().toImage(24, 24);
+    final filledBytes =
+        await filledImage.toByteData(format: ui.ImageByteFormat.rawRgba);
+    expect(filledBytes!.getUint8((12 * 24 + 12) * 4 + 3), 255);
+    filledController.dispose();
+  });
+
+  test('original keeps open contours visible with a stroke fallback', () async {
+    final controller = MeldIconController(initialSource: _line);
+    final recorder = ui.PictureRecorder();
+    final painter = MeldIconPainter(
+      controller: controller,
+      viewBox: const MeldViewBox(0, 0, 24, 24),
+      color: Colors.white,
+      strokeWidth: 2,
+      strokeCap: ui.StrokeCap.square,
+      strokeJoin: ui.StrokeJoin.miter,
+      antiAlias: false,
+      paintStyle: MeldPaintStyle.original,
+    );
+
+    painter.paint(ui.Canvas(recorder), const Size(24, 24));
+    final image = await recorder.endRecording().toImage(24, 24);
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    final centerAlpha = bytes!.getUint8((12 * 24 + 12) * 4 + 3);
+
+    expect(centerAlpha, 255);
+    controller.dispose();
+  });
+
+  test('both preserves holes when filling compound paths', () async {
     const ring = PathDataSource('M4 4H20V20H4Z M8 8V16H16V8Z');
     final controller = MeldIconController(initialSource: ring);
     controller.seek(const PathDataSource('M2 2H22V22H2Z'), 0);
@@ -76,7 +176,7 @@ void main() {
       strokeCap: ui.StrokeCap.square,
       strokeJoin: ui.StrokeJoin.miter,
       antiAlias: false,
-      paintStyle: MeldPaintStyle.fillAndStroke,
+      paintStyle: MeldPaintStyle.both,
     );
 
     painter.paint(ui.Canvas(recorder), const Size(24, 24));

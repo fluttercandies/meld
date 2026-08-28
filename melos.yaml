@@ -3,6 +3,7 @@ name: meld_workspace
 packages:
   - packages/*
   - examples/showcase
+  - examples/showcase/cockpit
 
 command:
   bootstrap:

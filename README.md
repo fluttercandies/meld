@@ -60,7 +60,7 @@ controller.seek(MenuButton.close, 0.72);
 await controller.playSequence([MenuButton.menu, MenuButton.close]);
 ```
 
-Use `MeldIconTheme` for a shared visual language. `MeldPaintStyle.stroke` draws the geometry outline, `fill` preserves closed glyph fills and holes, and `fillAndStroke` fills first before adding an outline.
+Use `MeldIconTheme` for a shared visual language. `MeldPaintStyle.outline` always draws the geometry outline, `original` preserves the source intent (line sources stay outlined and font glyphs stay filled), and `both` fills closed contours before adding an outline.
 
 ## Inputs
 
@@ -78,7 +78,7 @@ final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
 final home = Meld.sourceFromIconData(Icons.home_rounded, fontBytes: bytes);
 final homeIcon = MeldIcon(
   icon: home,
-  paintStyle: MeldPaintStyle.fillAndStroke,
+  paintStyle: MeldPaintStyle.original,
   label: 'Home',
 );
 ```

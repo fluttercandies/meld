@@ -48,11 +48,11 @@ void main() {
           find.byKey(const ValueKey<String>('preview-icon')),
         );
 
-    expect(preview().paintStyle, MeldPaintStyle.fillAndStroke);
+    expect(preview().paintStyle, MeldPaintStyle.original);
     await tester.ensureVisible(find.text('Outline'));
     await tester.tap(find.text('Outline'));
     await tester.pump();
-    expect(preview().paintStyle, MeldPaintStyle.stroke);
+    expect(preview().paintStyle, MeldPaintStyle.outline);
   });
 
   testWidgets('play starts a running transition and advances every frame',

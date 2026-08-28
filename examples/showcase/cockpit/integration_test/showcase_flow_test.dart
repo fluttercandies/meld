@@ -141,7 +141,16 @@ void main() {
               find.byKey(const ValueKey<String>('paint-style-selector')),
             )
             .selected,
-        <MeldPaintStyle>{MeldPaintStyle.stroke},
+        <MeldPaintStyle>{MeldPaintStyle.outline},
+      );
+      await cockpit.tap('Original');
+      expect(
+        cockpit.flutter
+            .widget<SegmentedButton<MeldPaintStyle>>(
+              find.byKey(const ValueKey<String>('paint-style-selector')),
+            )
+            .selected,
+        <MeldPaintStyle>{MeldPaintStyle.original},
       );
       await cockpit.tap('Both');
       expect(
@@ -150,7 +159,7 @@ void main() {
               find.byKey(const ValueKey<String>('paint-style-selector')),
             )
             .selected,
-        <MeldPaintStyle>{MeldPaintStyle.fillAndStroke},
+        <MeldPaintStyle>{MeldPaintStyle.both},
       );
 
       await cockpit.tap('Detailed');
