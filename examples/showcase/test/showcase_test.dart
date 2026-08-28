@@ -64,6 +64,8 @@ void main() {
         tester.widget<MeldIcon>(find.byType(MeldIcon).first).controller!;
     expect(controller.status, MeldIconStatus.paused);
     expect(controller.progress, 0);
+    expect(controller.motionMode, MeldMotionMode.always);
+    expect(controller.interpolation, MeldInterpolationStrategy.tangentAware);
     final initialGeometry = controller.flightPaths!
         .expand<double>((path) => path)
         .toList(growable: false);
@@ -99,6 +101,24 @@ void main() {
     expect(controller.progress, 1);
     expect(find.text('Close → Menu'), findsOneWidget);
     expect(find.text('Reverse to start'), findsOneWidget);
+  });
+
+  testWidgets('first-frame play starts without a quality warmup',
+      (tester) async {
+    await tester.pumpWidget(const MeldShowcaseApp());
+
+    final controller = tester
+        .widget<MeldIcon>(find.byKey(const ValueKey<String>('preview-icon')))
+        .controller!;
+    expect(controller.status, MeldIconStatus.paused);
+    expect(controller.progress, 0);
+
+    await tester.tap(find.byKey(const ValueKey<String>('play-button')));
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(controller.status, MeldIconStatus.running);
+    expect(controller.progress, 0);
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(controller.progress, greaterThan(0));
   });
 
   testWidgets('path, svg, and font endpoint changes all remain animatable',

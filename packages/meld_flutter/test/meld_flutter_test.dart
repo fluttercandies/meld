@@ -469,6 +469,25 @@ void main() {
     controller.dispose();
   });
 
+  testWidgets('external controller motion options survive widget attach',
+      (tester) async {
+    final controller = MeldIconController(initialSource: _line)
+      ..motionMode = MeldMotionMode.always
+      ..interpolation = MeldInterpolationStrategy.tangentAware;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MeldIconTheme(
+          data: const MeldIconThemeData(),
+          child: MeldIcon(controller: controller),
+        ),
+      ),
+    );
+
+    expect(controller.motionMode, MeldMotionMode.always);
+    expect(controller.interpolation, MeldInterpolationStrategy.tangentAware);
+    controller.dispose();
+  });
+
   testWidgets('keeps flight geometry active during endpoint overshoot',
       (tester) async {
     final controller = MeldIconController(initialSource: _circle)

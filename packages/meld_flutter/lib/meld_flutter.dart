@@ -1115,12 +1115,12 @@ final class _MeldIconState extends State<MeldIcon>
     controller = widget.controller ??
         MeldIconController(
             initialSource: widget.icon ?? widget.from ?? widget.to);
-    controller.attach(this);
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    controller.attach(this);
     _applyOptions();
     if (!_didInitializeDependencies &&
         widget.from != null &&
@@ -1162,8 +1162,18 @@ final class _MeldIconState extends State<MeldIcon>
 
   void _applyOptions() {
     final theme = MeldIconTheme.of(context);
-    controller.motionMode = widget.motionMode ?? theme.motionMode;
-    controller.interpolation = widget.interpolation ?? theme.interpolation;
+    if (ownsController) {
+      controller.motionMode = widget.motionMode ?? theme.motionMode;
+      controller.interpolation = widget.interpolation ?? theme.interpolation;
+    } else {
+      // An external controller owns its motion policy. Widget-level values
+      // remain explicit overrides, while a theme's defaults must not reset
+      // controller configuration during the first attach or a rebuild.
+      if (widget.motionMode != null) controller.motionMode = widget.motionMode!;
+      if (widget.interpolation != null) {
+        controller.interpolation = widget.interpolation!;
+      }
+    }
     controller.userAnimationsDisabled =
         MediaQuery.maybeOf(context)?.disableAnimations ?? false;
   }
