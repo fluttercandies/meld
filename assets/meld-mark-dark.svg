@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
-  <title>Meld mark</title>
-  <path fill="#8B7FFF" d="M8 16a8 8 0 0 1 8-8h8v16h8V8h8a8 8 0 0 1 8 8v8H32v8h16v8a8 8 0 0 1-8 8h-8V32h-8v16h-8a8 8 0 0 1-8-8v-8h16v-8H8v-8Z"/>
-  <path fill="#F5F7FF" d="M24 24h16v16H24z"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="meld-mark-dark-title">
+  <title id="meld-mark-dark-title">Meld mark</title>
+  <path fill="#6D5EF7" d="M32 6C17.64 6 6 17.64 6 32s11.64 26 26 26V44h-8a4 4 0 0 1-4-4V24a4 4 0 0 1 4-4h8V6Z"/>
+  <path fill="#B24CFF" d="M32 6h14c6.627 0 12 5.373 12 12v28c0 6.627-5.373 12-12 12H32V44h8a4 4 0 0 0 4-4V24a4 4 0 0 0-4-4h-8V6Z"/>
 </svg>

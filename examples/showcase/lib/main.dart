@@ -15,6 +15,7 @@ abstract final class _MeldColors {
   static const inkMuted = Color(0xFFA7ACBD);
   static const accent = Color(0xFF6D5EF7);
   static const accentBright = Color(0xFF8B7FFF);
+  static const accentSecondary = Color(0xFFB24CFF);
   static const grid = Color(0x0DFFFFFF);
   static const outline = Color(0x1FFFFFFF);
 }
@@ -1306,14 +1307,22 @@ class _MeldMark extends StatelessWidget {
       child: SizedBox(
         width: size,
         height: size,
-        child: CustomPaint(painter: _MeldMarkPainter()),
+        child: CustomPaint(
+          painter: _MeldMarkPainter(
+            primary: _MeldColors.accent,
+            secondary: _MeldColors.accentSecondary,
+          ),
+        ),
       ),
     );
   }
 }
 
 class _MeldMarkPainter extends CustomPainter {
-  const _MeldMarkPainter();
+  const _MeldMarkPainter({required this.primary, required this.secondary});
+
+  final Color primary;
+  final Color secondary;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1322,43 +1331,40 @@ class _MeldMarkPainter extends CustomPainter {
       ..save()
       ..scale(scale);
 
-    final mark = Path()
-      ..moveTo(8, 16)
-      ..arcToPoint(const Offset(16, 8), radius: const Radius.circular(8))
-      ..lineTo(24, 8)
-      ..lineTo(24, 24)
-      ..lineTo(32, 24)
-      ..lineTo(32, 8)
-      ..lineTo(40, 8)
-      ..arcToPoint(const Offset(48, 16), radius: const Radius.circular(8))
-      ..lineTo(48, 24)
-      ..lineTo(32, 24)
-      ..lineTo(32, 32)
-      ..lineTo(48, 32)
-      ..lineTo(48, 40)
-      ..arcToPoint(const Offset(40, 48), radius: const Radius.circular(8))
-      ..lineTo(32, 48)
-      ..lineTo(32, 32)
-      ..lineTo(24, 32)
-      ..lineTo(24, 48)
-      ..lineTo(16, 48)
-      ..arcToPoint(const Offset(8, 40), radius: const Radius.circular(8))
-      ..lineTo(8, 32)
-      ..lineTo(24, 32)
-      ..lineTo(24, 24)
-      ..lineTo(8, 24)
+    final accentPath = Path()
+      ..moveTo(32, 6)
+      ..cubicTo(17.64, 6, 6, 17.64, 6, 32)
+      ..cubicTo(6, 46.36, 17.64, 58, 32, 58)
+      ..lineTo(32, 44)
+      ..lineTo(24, 44)
+      ..cubicTo(21.79, 44, 20, 42.21, 20, 40)
+      ..lineTo(20, 24)
+      ..cubicTo(20, 21.79, 21.79, 20, 24, 20)
+      ..lineTo(32, 20)
+      ..close();
+    final inkPath = Path()
+      ..moveTo(32, 6)
+      ..lineTo(46, 6)
+      ..cubicTo(52.627, 6, 58, 11.373, 58, 18)
+      ..lineTo(58, 46)
+      ..cubicTo(58, 52.627, 52.627, 58, 46, 58)
+      ..lineTo(32, 58)
+      ..lineTo(32, 44)
+      ..lineTo(40, 44)
+      ..cubicTo(42.21, 44, 44, 42.21, 44, 40)
+      ..lineTo(44, 24)
+      ..cubicTo(44, 21.79, 42.21, 20, 40, 20)
+      ..lineTo(32, 20)
       ..close();
 
-    canvas.drawPath(mark, Paint()..color = _MeldColors.accent);
-    canvas.drawRect(
-      const Rect.fromLTWH(24, 24, 16, 16),
-      Paint()..color = _MeldColors.canvas,
-    );
+    canvas.drawPath(accentPath, Paint()..color = primary);
+    canvas.drawPath(inkPath, Paint()..color = secondary);
     canvas.restore();
   }
 
   @override
-  bool shouldRepaint(covariant _MeldMarkPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _MeldMarkPainter oldDelegate) =>
+      oldDelegate.primary != primary || oldDelegate.secondary != secondary;
 }
 
 class _GridBackdrop extends StatelessWidget {

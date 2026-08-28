@@ -1,5 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 64" role="img" aria-labelledby="title">
-  <title>Meld</title>
-  <g transform="translate(0 0) scale(1)"><path fill="#8B7FFF" d="M8 16a8 8 0 0 1 8-8h8v16h8V8h8a8 8 0 0 1 8 8v8H32v8h16v8a8 8 0 0 1-8 8h-8V32h-8v16h-8a8 8 0 0 1-8-8v-8h16v-8H8v-8Z"/><path fill="#F5F7FF" d="M24 24h16v16H24z"/></g>
-  <g transform="translate(74 0)" fill="#F5F7FF"><path d="M4 52V12h10l11 17 11-17h10v40H36V30L25 46 14 30v22H4Z"/><path d="M58 12h30v9H69v7h17v8H69v7h19v9H58V12Z"/><path d="M100 12h11v30h18v10h-29V12Z"/><path d="M142 12h17c15 0 25 8 25 20s-10 20-25 20h-17V12Zm12 10v20h5c7 0 12-4 12-10s-5-10-12-10h-5Z"/></g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 64" role="img" aria-labelledby="meld-lockup-dark-title">
+  <title id="meld-lockup-dark-title">Meld</title>
+  <g transform="translate(0 0)">
+    <path fill="#6D5EF7" d="M32 6C17.64 6 6 17.64 6 32s11.64 26 26 26V44h-8a4 4 0 0 1-4-4V24a4 4 0 0 1 4-4h8V6Z"/>
+    <path fill="#B24CFF" d="M32 6h14c6.627 0 12 5.373 12 12v28c0 6.627-5.373 12-12 12H32V44h8a4 4 0 0 0 4-4V24a4 4 0 0 0-4-4h-8V6Z"/>
+  </g>
+  <g transform="translate(74 0)" fill="none" stroke="#6D5EF7" stroke-linecap="round" stroke-linejoin="round" stroke-width="9">
+    <path d="M8 52V12l17 22 17-22v40"/>
+    <path d="M63 12h28M63 32h23M63 52h28M63 12v40"/>
+    <path d="M107 12v40h31"/>
+    <path d="M155 12v40h10c14 0 23-8 23-20s-9-20-23-20h-10Z"/>
+  </g>
 </svg>
