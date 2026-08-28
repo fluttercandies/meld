@@ -430,6 +430,44 @@ void main() {
     controller.dispose();
   });
 
+  test('original keeps a filled glyph against the open close target', () async {
+    const filledPlus = PathDataSource(
+      'M3 10H10V3H14V10H21V14H14V21H10V14H3Z',
+      paintStyle: MeldSourcePaintStyle.fill,
+    );
+    final controller = MeldIconController(
+      engine: MeldEngine(
+        sampling: const SamplingConfig(pointCount: 120, maxPointCount: 120),
+      ),
+      initialSource: filledPlus,
+    )..interpolation = MeldInterpolationStrategy.tangentAware;
+    final painter = MeldIconPainter(
+      controller: controller,
+      viewBox: const MeldViewBox(0, 0, 24, 24),
+      color: Colors.white,
+      strokeWidth: 1,
+      strokeCap: ui.StrokeCap.square,
+      strokeJoin: ui.StrokeJoin.miter,
+      antiAlias: false,
+      paintStyle: MeldPaintStyle.original,
+    );
+    for (final progress in <double>[0.001, 0.02, 0.066]) {
+      controller.seek(_cross, progress);
+      final recorder = ui.PictureRecorder();
+      painter.paint(ui.Canvas(recorder), const Size(240, 240));
+      final image = await recorder.endRecording().toImage(240, 240);
+      final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      image.dispose();
+
+      expect(
+        bytes!.getUint8((120 * 240 + 120) * 4 + 3),
+        greaterThan(200),
+        reason: 'fill disappeared at progress $progress',
+      );
+    }
+    controller.dispose();
+  });
+
   test('original preserves paint weight when reversing mid-transition',
       () async {
     const geometry = 'M4 4H20V20H4Z';

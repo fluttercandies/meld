@@ -18,6 +18,8 @@ void main() {
   test('plan is exact at endpoints and finite during flight', () {
     final engine = MeldEngine();
     final plan = engine.plan(menu, close);
+    expect(plan.items.every((item) => item.sourceIndex != null), isTrue);
+    expect(plan.items.every((item) => item.targetIndex != null), isTrue);
     final output = allocateOutputs(plan);
     interpolatePlan(plan, 0, output);
     for (var item = 0; item < plan.items.length; item++) {
@@ -169,6 +171,12 @@ void main() {
   test('serializes and restores a plan without changing its flight', () {
     final plan = MeldEngine().plan(menu, close);
     final restored = MeldPlan.fromJson(plan.toJson());
+    expect(
+      restored.items
+          .map((item) => (item.sourceIndex, item.targetIndex))
+          .toList(),
+      plan.items.map((item) => (item.sourceIndex, item.targetIndex)).toList(),
+    );
     final originalOutput = allocateOutputs(plan);
     final restoredOutput = allocateOutputs(restored);
     interpolatePlan(plan, 0.37, originalOutput);

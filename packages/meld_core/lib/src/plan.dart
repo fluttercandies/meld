@@ -85,6 +85,8 @@ final class MeldPlanItem {
     required double logScale,
     required double residual,
     required this.closed,
+    this.sourceIndex,
+    this.targetIndex,
     BlockTransport? block,
   })  : a = Float64List.fromList(a).asUnmodifiableView(),
         centeredA = Float64List.fromList(centeredA).asUnmodifiableView(),
@@ -114,6 +116,13 @@ final class MeldPlanItem {
       throw MeldException('invalid-plan',
           'Plan item buffers must have matching non-empty lengths.');
     }
+    final sourceContourIndex = sourceIndex;
+    final targetContourIndex = targetIndex;
+    if ((sourceContourIndex != null && sourceContourIndex < 0) ||
+        (targetContourIndex != null && targetContourIndex < 0)) {
+      throw MeldException(
+          'invalid-plan', 'Plan contour indices must be non-negative.');
+    }
     if (block != null) {
       _validatePair(block.offset, 'block.offset');
       _validatePair(block.drift, 'block.drift');
@@ -130,6 +139,16 @@ final class MeldPlanItem {
   final double logScale;
   final double residual;
   final bool closed;
+
+  /// Index of the normalized source contour used for this pair.
+  ///
+  /// A source contour can be paired with multiple target contours when the
+  /// planner builds a surjective match. Keeping the index lets renderers
+  /// avoid filling synthetic duplicate contours more than once.
+  final int? sourceIndex;
+
+  /// Index of the normalized target contour used for this pair.
+  final int? targetIndex;
   final BlockTransport? block;
 }
 
@@ -189,6 +208,13 @@ final class MeldPlan {
       throw MeldException('invalid-plan', 'Plan field "$name" must be finite.');
     }
 
+    int? index(Object? value, String name) {
+      if (value == null) return null;
+      if (value is int && value >= 0) return value;
+      throw MeldException(
+          'invalid-plan', 'Plan field "$name" must be a non-negative integer.');
+    }
+
     final items = <MeldPlanItem>[];
     for (final raw in rawItems) {
       if (raw is! Map<String, Object?>)
@@ -220,6 +246,8 @@ final class MeldPlan {
           logScale: number(raw, 'logScale'),
           residual: number(raw, 'residual'),
           closed: closed,
+          sourceIndex: index(raw['sourceIndex'], 'sourceIndex'),
+          targetIndex: index(raw['targetIndex'], 'targetIndex'),
           block: block,
         ),
       );
@@ -296,6 +324,8 @@ final class MeldPlan {
               'logScale': item.logScale,
               'residual': item.residual,
               'closed': item.closed,
+              if (item.sourceIndex != null) 'sourceIndex': item.sourceIndex,
+              if (item.targetIndex != null) 'targetIndex': item.targetIndex,
               if (item.block != null)
                 'block': <String, Object?>{
                   'offset': <double>[
@@ -585,6 +615,8 @@ MeldPlan buildPlan(List<SampledPath> source, List<SampledPath> target,
         logScale: math.log(alignment.scale),
         residual: alignment.residual,
         closed: source[pair.$1].closed && target[pair.$2].closed,
+        sourceIndex: pair.$1,
+        targetIndex: pair.$2,
       ),
     );
   }
@@ -666,6 +698,8 @@ List<MeldPlanItem> _applyGlobal(List<MeldPlanItem> items, int sampleCount) {
         logScale: math.log(global.scale),
         residual: residual,
         closed: item.closed,
+        sourceIndex: item.sourceIndex,
+        targetIndex: item.targetIndex,
         block: BlockTransport(
           offset: (offsetX, offsetY),
           drift: (

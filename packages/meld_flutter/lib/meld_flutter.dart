@@ -836,6 +836,7 @@ final class MeldIconPainter extends CustomPainter {
   final ui.Path _closedPath = ui.Path()..fillType = ui.PathFillType.evenOdd;
   final ui.Path _openPath = ui.Path();
   final ui.Path _segmentPath = ui.Path();
+  final Set<int> _filledSourceIndices = <int>{};
   double _limitedControlX = 0;
   double _limitedControlY = 0;
 
@@ -863,6 +864,12 @@ final class MeldIconPainter extends CustomPainter {
     var hasOpenContours = false;
     var needsClosedPath = paintStyle == MeldPaintStyle.both;
     var needsOpenPath = false;
+    final plan = controller._plan;
+    final deduplicateFillContours = paintStyle == MeldPaintStyle.original &&
+        plan != null &&
+        plan.diagnostics.sourceSubpaths < plan.diagnostics.targetSubpaths;
+    final filledSourceIndices =
+        deduplicateFillContours ? (_filledSourceIndices..clear()) : null;
     if (paintStyle == MeldPaintStyle.original) {
       final current = controller._plan == null
           ? controller.currentPaintStyle
@@ -897,8 +904,12 @@ final class MeldIconPainter extends CustomPainter {
           // open contour. Canvas fill implicitly closes such a subpath, which
           // keeps the filled source visible during the flight without adding
           // a closing edge to the stroke path.
+          final sourceIndex = plan?.items[i].sourceIndex ?? i;
+          final shouldFill = filledSourceIndices == null ||
+              filledSourceIndices.add(sourceIndex);
           if (needsClosedPath &&
-              (closed[i] || paintStyle == MeldPaintStyle.original)) {
+              (closed[i] || paintStyle == MeldPaintStyle.original) &&
+              shouldFill) {
             _closedPath.addPath(_segmentPath, ui.Offset.zero);
           } else if (needsOpenPath && !closed[i]) {
             _openPath.addPath(_segmentPath, ui.Offset.zero);
