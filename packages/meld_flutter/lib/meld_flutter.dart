@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -155,6 +156,74 @@ MeldSource iconDataToSource(
   );
 }
 
+_MeldTickerHub? _tickerHub;
+
+_MeldTickerHub _globalTickerHub() {
+  final existing = _tickerHub;
+  if (existing != null && !existing._disposed) return existing;
+  final created = _MeldTickerHub();
+  _tickerHub = created;
+  return created;
+}
+
+/// Shares one engine ticker between all Meld controllers in this Flutter
+/// isolate, avoiding one platform ticker per icon instance.
+final class _MeldTickerHub {
+  _MeldTickerHub() {
+    _ticker = Ticker(_onTick);
+  }
+
+  late final Ticker _ticker;
+  final Set<MeldIconController> _attached =
+      LinkedHashSet<MeldIconController>.identity();
+  final List<MeldIconController> _running = <MeldIconController>[];
+  bool _disposed = false;
+
+  void attach(MeldIconController controller) {
+    if (_disposed) throw StateError('Ticker hub has been disposed.');
+    _attached.add(controller);
+  }
+
+  void detach(MeldIconController controller) {
+    _running.remove(controller);
+    _attached.remove(controller);
+    if (_attached.isEmpty) {
+      _ticker.stop();
+      _disposed = true;
+      _ticker.dispose();
+      if (identical(_tickerHub, this)) _tickerHub = null;
+    } else if (_running.isEmpty) {
+      _ticker.stop();
+    }
+  }
+
+  void start(MeldIconController controller) {
+    if (_disposed ||
+        !_attached.contains(controller) ||
+        !controller.tickerEnabled) return;
+    if (!_running.contains(controller)) _running.add(controller);
+    if (!_ticker.isActive) _ticker.start();
+  }
+
+  void stop(MeldIconController controller) {
+    _running.remove(controller);
+    if (_running.isEmpty) _ticker.stop();
+  }
+
+  void _onTick(Duration elapsed) {
+    if (_disposed) return;
+    var index = 0;
+    while (index < _running.length) {
+      final controller = _running[index];
+      controller._onTick(elapsed);
+      if (index < _running.length && identical(_running[index], controller)) {
+        index++;
+      }
+    }
+    if (_running.isEmpty) _ticker.stop();
+  }
+}
+
 final class MeldIconController extends ChangeNotifier {
   MeldIconController({MeldEngine? engine, MeldSource? initialSource})
       : engine = engine ?? MeldEngine(),
@@ -179,7 +248,7 @@ final class MeldIconController extends ChangeNotifier {
   List<CubicPath>? _targetPaths;
   MeldSource? _targetPathsSource;
   MeldSpring _spring = MeldSpring();
-  Ticker? _ticker;
+  _MeldTickerHub? _tickerHub;
   Duration? _lastTick;
   Completer<MeldTransitionResult>? _transition;
   MeldIconStatus _status = MeldIconStatus.idle;
@@ -193,6 +262,23 @@ final class MeldIconController extends ChangeNotifier {
   MeldMotionMode motionMode = MeldMotionMode.user;
   MeldInterpolationStrategy interpolation = MeldInterpolationStrategy.polar;
   bool userAnimationsDisabled = false;
+  bool _tickerEnabled = true;
+
+  /// Whether this controller participates in frame scheduling.
+  ///
+  /// [MeldIcon] keeps this in sync with [TickerMode]. It remains public so a
+  /// custom host can apply the same policy when driving a controller directly.
+  bool get tickerEnabled => _tickerEnabled;
+
+  set tickerEnabled(bool value) {
+    if (_tickerEnabled == value) return;
+    _tickerEnabled = value;
+    if (value && _status == MeldIconStatus.running) {
+      _startTicker();
+    } else if (!value) {
+      _stopTicker();
+    }
+  }
 
   MeldIconStatus get status => _status;
   MeldSource? get currentSource => _current;
@@ -242,14 +328,18 @@ final class MeldIconController extends ChangeNotifier {
 
   void attach(TickerProvider vsync) {
     if (_status == MeldIconStatus.disposed) return;
-    _ticker ??= vsync.createTicker(_onTick);
-    if (_status == MeldIconStatus.running && !_ticker!.isActive)
-      _ticker!.start();
+    final hub = _globalTickerHub();
+    if (!identical(_tickerHub, hub)) {
+      _tickerHub?.detach(this);
+      _tickerHub = hub;
+    }
+    _tickerHub!.attach(this);
+    if (_status == MeldIconStatus.running) _startTicker();
   }
 
   void detach() {
-    _ticker?.dispose();
-    _ticker = null;
+    _tickerHub?.detach(this);
+    _tickerHub = null;
     _cancel(MeldTransitionEnd.cancelled);
   }
 
@@ -281,7 +371,7 @@ final class MeldIconController extends ChangeNotifier {
             : springPreset(preset));
     try {
       _lastError = null;
-      _ticker?.stop();
+      _stopTicker();
       final hasInFlightGeometry = _status == MeldIconStatus.running ||
           _plan != null && _progress > 0 && _progress < 1;
       _previousSource = _current;
@@ -299,8 +389,10 @@ final class MeldIconController extends ChangeNotifier {
           [for (final item in _plan!.items) item.closed]);
       _target = source;
       _targetPaintStyle = source.paintStyle;
-      _targetPathsSource = source;
-      _targetPaths = List<CubicPath>.unmodifiable(iconToCubics(source));
+      if (!identical(_targetPathsSource, source)) {
+        _targetPathsSource = source;
+        _targetPaths = List<CubicPath>.unmodifiable(iconToCubics(source));
+      }
       final inheritedVelocity = _velocity;
       _spring = MeldSpring(config)..start(inheritedVelocity: inheritedVelocity);
       _progress = 0;
@@ -310,9 +402,9 @@ final class MeldIconController extends ChangeNotifier {
       _transition = Completer<MeldTransitionResult>();
       final future = _transition!.future;
       _lastTick = null;
-      _ticker?.start();
+      _startTicker();
       notifyListeners();
-      if (_ticker == null) {
+      if (_tickerHub == null) {
         _finishImmediately();
       }
       return future;
@@ -325,7 +417,7 @@ final class MeldIconController extends ChangeNotifier {
   void set(MeldSource source) {
     _ensureAlive();
     try {
-      _validateSource(source);
+      if (!identical(_target, source)) _validateSource(source);
       _stopTicker();
       _completePrevious(MeldTransitionEnd.cancelled);
       _current = source;
@@ -358,12 +450,13 @@ final class MeldIconController extends ChangeNotifier {
         throw MeldException('invalid-progress', 'Progress must be finite.');
       }
       final t = value.clamp(0, 1).toDouble();
-      _validateSource(source);
+      if (!identical(_target, source)) _validateSource(source);
       _lastError = null;
       final base = _current ?? source;
       if (_current == null) _currentPaintStyle = base.paintStyle;
       _previousSource ??= _current;
-      final targetChanged = _target == null || !_sameGeometry(_target!, source);
+      final targetChanged = _target == null ||
+          (!identical(_target, source) && !_sameGeometry(_target!, source));
       if (_plan == null || targetChanged) {
         _plan = engine.plan(base, source);
         _planStartSource = base;
@@ -380,8 +473,10 @@ final class MeldIconController extends ChangeNotifier {
       interpolatePlan(_plan!, t, _outputs!, strategy: interpolation);
       _target = source;
       _targetPaintStyle = source.paintStyle;
-      _targetPathsSource = source;
-      _targetPaths = List<CubicPath>.unmodifiable(iconToCubics(source));
+      if (!identical(_targetPathsSource, source)) {
+        _targetPathsSource = source;
+        _targetPaths = List<CubicPath>.unmodifiable(iconToCubics(source));
+      }
       _progress = t;
       final endpoint = t >= 1 - 1e-6 ? source : _planStartSource ?? base;
       _current = endpoint;
@@ -401,7 +496,7 @@ final class MeldIconController extends ChangeNotifier {
 
   void pause() {
     if (_status != MeldIconStatus.running) return;
-    _ticker?.stop();
+    _stopTicker();
     _status = MeldIconStatus.paused;
     notifyListeners();
   }
@@ -414,9 +509,9 @@ final class MeldIconController extends ChangeNotifier {
     }
     _status = MeldIconStatus.running;
     _lastTick = null;
-    _ticker?.start();
+    _startTicker();
     notifyListeners();
-    if (_ticker == null) _finishAtSpringTarget();
+    if (_tickerHub == null) _finishAtSpringTarget();
   }
 
   /// Reverses the current transition from its current shape.
@@ -483,9 +578,9 @@ final class MeldIconController extends ChangeNotifier {
       final future = transition.future;
       _status = MeldIconStatus.running;
       _lastTick = null;
-      _ticker?.start();
+      _startTicker();
       notifyListeners();
-      if (_ticker == null) _finishAtSpringTarget();
+      if (_tickerHub == null) _finishAtSpringTarget();
       return future;
     }
 
@@ -519,6 +614,8 @@ final class MeldIconController extends ChangeNotifier {
   void dispose() {
     if (_status == MeldIconStatus.disposed) return;
     _stopTicker();
+    _tickerHub?.detach(this);
+    _tickerHub = null;
     _completePrevious(MeldTransitionEnd.disposed);
     _status = MeldIconStatus.disposed;
     _plan = null;
@@ -591,8 +688,12 @@ final class MeldIconController extends ChangeNotifier {
   }
 
   void _stopTicker() {
-    _ticker?.stop();
+    _tickerHub?.stop(this);
     _lastTick = null;
+  }
+
+  void _startTicker() {
+    _tickerHub?.start(this);
   }
 
   void _cancel(MeldTransitionEnd end) {
@@ -717,6 +818,8 @@ final class MeldIconPainter extends CustomPainter {
       throw MeldException('invalid-stroke-width',
           'Stroke width must be finite and non-negative.');
     }
+    _strokePaint = _createPaint(ui.PaintingStyle.stroke);
+    _fillPaint = _createPaint(ui.PaintingStyle.fill);
   }
 
   final MeldIconController controller;
@@ -727,6 +830,14 @@ final class MeldIconPainter extends CustomPainter {
   final ui.StrokeJoin strokeJoin;
   final bool antiAlias;
   final MeldPaintStyle paintStyle;
+  late final ui.Paint _strokePaint;
+  late final ui.Paint _fillPaint;
+  final ui.Path _allPath = ui.Path();
+  final ui.Path _closedPath = ui.Path()..fillType = ui.PathFillType.evenOdd;
+  final ui.Path _openPath = ui.Path();
+  final ui.Path _segmentPath = ui.Path();
+  double _limitedControlX = 0;
+  double _limitedControlY = 0;
 
   @override
   void paint(ui.Canvas canvas, ui.Size size) {
@@ -738,30 +849,27 @@ final class MeldIconPainter extends CustomPainter {
         (size.width - viewBox.width * scale) / 2 - viewBox.minX * scale,
         (size.height - viewBox.height * scale) / 2 - viewBox.minY * scale);
     canvas.scale(scale, scale);
-    final paint = ui.Paint()
-      ..color = color
-      ..style = ui.PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = strokeCap
-      ..strokeJoin = strokeJoin
-      ..isAntiAlias = antiAlias;
+    _strokePaint.color = color;
+    _fillPaint.color = color;
     final progress = controller.progress;
     final atCanonicalEndpoint =
         !controller.isAnimating && (progress <= 1e-6 || progress >= 1 - 1e-6);
     final outputs = atCanonicalEndpoint ? null : controller.flightPaths;
     final closed = controller.closedPaths;
-    final allPath = ui.Path();
-    final closedPath = ui.Path()..fillType = ui.PathFillType.evenOdd;
-    final openPath = ui.Path();
+    _allPath.reset();
+    _closedPath.reset();
+    _closedPath.fillType = ui.PathFillType.evenOdd;
+    _openPath.reset();
     var hasOpenContours = false;
     if (outputs != null && closed != null) {
       for (var i = 0; i < outputs.length; i++) {
-        final path = _flightPath(outputs[i], closed[i]);
-        allPath.addPath(path, ui.Offset.zero);
+        _segmentPath.reset();
+        _appendFlightPath(_segmentPath, outputs[i], closed[i]);
+        _allPath.addPath(_segmentPath, ui.Offset.zero);
         if (closed[i]) {
-          closedPath.addPath(path, ui.Offset.zero);
+          _closedPath.addPath(_segmentPath, ui.Offset.zero);
         } else {
-          openPath.addPath(path, ui.Offset.zero);
+          _openPath.addPath(_segmentPath, ui.Offset.zero);
           hasOpenContours = true;
         }
       }
@@ -769,20 +877,29 @@ final class MeldIconPainter extends CustomPainter {
       final paths = controller.canonicalPaths;
       if (paths != null) {
         for (final cubic in paths) {
-          final path = _cubicPath(cubic);
-          allPath.addPath(path, ui.Offset.zero);
+          _segmentPath.reset();
+          _appendCubicPath(_segmentPath, cubic);
+          _allPath.addPath(_segmentPath, ui.Offset.zero);
           if (cubic.closed) {
-            closedPath.addPath(path, ui.Offset.zero);
+            _closedPath.addPath(_segmentPath, ui.Offset.zero);
           } else {
-            openPath.addPath(path, ui.Offset.zero);
+            _openPath.addPath(_segmentPath, ui.Offset.zero);
             hasOpenContours = true;
           }
         }
       }
     }
-    _draw(canvas, allPath, closedPath, openPath, hasOpenContours, paint);
+    _draw(canvas, _allPath, _closedPath, _openPath, hasOpenContours);
     canvas.restore();
   }
+
+  ui.Paint _createPaint(ui.PaintingStyle style) => ui.Paint()
+    ..color = color
+    ..style = style
+    ..strokeWidth = strokeWidth
+    ..strokeCap = strokeCap
+    ..strokeJoin = strokeJoin
+    ..isAntiAlias = antiAlias;
 
   void _draw(
     ui.Canvas canvas,
@@ -790,11 +907,10 @@ final class MeldIconPainter extends CustomPainter {
     ui.Path closedPath,
     ui.Path openPath,
     bool hasOpenContours,
-    ui.Paint paint,
   ) {
     switch (paintStyle) {
       case MeldPaintStyle.outline:
-        canvas.drawPath(allPath, paint);
+        canvas.drawPath(allPath, _strokePaint);
       case MeldPaintStyle.original:
         _drawOriginal(
           canvas,
@@ -804,9 +920,8 @@ final class MeldIconPainter extends CustomPainter {
           hasOpenContours,
         );
       case MeldPaintStyle.both:
-        final fill = _paint(ui.PaintingStyle.fill);
-        canvas.drawPath(closedPath, fill);
-        canvas.drawPath(allPath, paint);
+        canvas.drawPath(closedPath, _fillPaint);
+        canvas.drawPath(allPath, _strokePaint);
     }
   }
 
@@ -818,174 +933,157 @@ final class MeldIconPainter extends CustomPainter {
     bool hasOpenContours,
   ) {
     final progress = controller.progress.clamp(0, 1).toDouble();
-    final current = _sourcePaintWeights(controller._plan == null
+    final current = controller._plan == null
         ? controller.currentPaintStyle
-        : controller._planStartPaintStyle);
-    final target = _sourcePaintWeights(controller._plan == null
+        : controller._planStartPaintStyle;
+    final target = controller._plan == null
         ? controller.targetPaintStyle
-        : controller._planTargetPaintStyle);
-    final fillOpacity = _lerp(current.fill, target.fill, progress);
-    final strokeOpacity = _lerp(current.stroke, target.stroke, progress);
+        : controller._planTargetPaintStyle;
+    final fillOpacity =
+        _lerp(_fillWeight(current), _fillWeight(target), progress);
+    final strokeOpacity =
+        _lerp(_strokeWeight(current), _strokeWeight(target), progress);
     if (fillOpacity > 1e-6) {
-      canvas.drawPath(
-        closedPath,
-        _paint(ui.PaintingStyle.fill, opacity: fillOpacity),
-      );
+      _fillPaint.color = _withOpacity(fillOpacity);
+      canvas.drawPath(closedPath, _fillPaint);
     }
     if (strokeOpacity > 1e-6) {
-      canvas.drawPath(
-        allPath,
-        _paint(ui.PaintingStyle.stroke, opacity: strokeOpacity),
-      );
+      _strokePaint.color = _withOpacity(strokeOpacity);
+      canvas.drawPath(allPath, _strokePaint);
     }
     if (hasOpenContours && strokeOpacity <= 1e-6 && fillOpacity > 1e-6) {
-      canvas.drawPath(
-        openPath,
-        _paint(ui.PaintingStyle.stroke, opacity: fillOpacity),
-      );
+      _strokePaint.color = _withOpacity(fillOpacity);
+      canvas.drawPath(openPath, _strokePaint);
     }
   }
 
-  ({double fill, double stroke}) _sourcePaintWeights(
-      MeldSourcePaintStyle style) {
-    return switch (style) {
-      MeldSourcePaintStyle.outline => (fill: 0, stroke: 1),
-      MeldSourcePaintStyle.fill => (fill: 1, stroke: 0),
-      MeldSourcePaintStyle.both => (fill: 1, stroke: 1),
-    };
-  }
+  double _fillWeight(MeldSourcePaintStyle style) =>
+      style == MeldSourcePaintStyle.outline ? 0 : 1;
+
+  double _strokeWeight(MeldSourcePaintStyle style) =>
+      style == MeldSourcePaintStyle.fill ? 0 : 1;
 
   double _lerp(double start, double end, double value) =>
       start + (end - start) * value;
 
-  ui.Paint _paint(ui.PaintingStyle style, {double opacity = 1}) {
-    return ui.Paint()
-      ..color = color.withValues(alpha: color.a * opacity)
-      ..style = style
-      ..strokeWidth = strokeWidth
-      ..strokeCap = strokeCap
-      ..strokeJoin = strokeJoin
-      ..isAntiAlias = antiAlias;
-  }
+  ui.Color _withOpacity(double opacity) => ui.Color.fromARGB(
+        // ignore: deprecated_member_use
+        (color.alpha * opacity).round().clamp(0, 255),
+        // ignore: deprecated_member_use
+        color.red,
+        // ignore: deprecated_member_use
+        color.green,
+        // ignore: deprecated_member_use
+        color.blue,
+      );
 
-  ui.Path _flightPath(Float64List points, bool close) {
+  void _appendFlightPath(ui.Path path, Float64List points, bool close) {
     final count = points.length ~/ 2;
-    final path = ui.Path()..moveTo(points[0], points[1]);
-    if (count < 2) return path;
-
-    double coordinate(int index, int axis) {
-      if (close) {
-        index %= count;
-        if (index < 0) index += count;
-      } else {
-        index = index.clamp(0, count - 1);
-      }
-      return points[index * 2 + axis];
-    }
-
-    double cornerWeight(int index) {
-      if (!close && (index <= 0 || index >= count - 1)) return 1;
-      final previousX = coordinate(index - 1, 0);
-      final previousY = coordinate(index - 1, 1);
-      final currentX = coordinate(index, 0);
-      final currentY = coordinate(index, 1);
-      final nextX = coordinate(index + 1, 0);
-      final nextY = coordinate(index + 1, 1);
-      final incomingX = currentX - previousX;
-      final incomingY = currentY - previousY;
-      final outgoingX = nextX - currentX;
-      final outgoingY = nextY - currentY;
-      final incomingLength = math.sqrt(
-        incomingX * incomingX + incomingY * incomingY,
-      );
-      final outgoingLength = math.sqrt(
-        outgoingX * outgoingX + outgoingY * outgoingY,
-      );
-      if (incomingLength < 1e-9 || outgoingLength < 1e-9) return 0;
-      final turn = math.atan2(
-        (incomingX * outgoingY - incomingY * outgoingX).abs(),
-        incomingX * outgoingX + incomingY * outgoingY,
-      );
-      const softenUntil = 0.28;
-      const sharpAt = 0.62;
-      if (turn <= softenUntil) return 1;
-      if (turn >= sharpAt) return 0;
-      return (sharpAt - turn) / (sharpAt - softenUntil);
-    }
-
-    (double, double) limitControl(
-      double baseX,
-      double baseY,
-      double controlX,
-      double controlY,
-      double maxDistance,
-    ) {
-      final deltaX = controlX - baseX;
-      final deltaY = controlY - baseY;
-      final distance = math.sqrt(deltaX * deltaX + deltaY * deltaY);
-      if (distance <= maxDistance || distance < 1e-9) {
-        return (controlX, controlY);
-      }
-      final scale = maxDistance / distance;
-      return (baseX + deltaX * scale, baseY + deltaY * scale);
-    }
+    path.moveTo(points[0], points[1]);
+    if (count < 2) return;
 
     final segmentCount = close ? count : count - 1;
     for (var segment = 0; segment < segmentCount; segment++) {
-      final startX = coordinate(segment, 0);
-      final startY = coordinate(segment, 1);
-      final endX = coordinate(segment + 1, 0);
-      final endY = coordinate(segment + 1, 1);
-      final previousX = coordinate(segment - 1, 0);
-      final previousY = coordinate(segment - 1, 1);
-      final nextNextX = coordinate(segment + 2, 0);
-      final nextNextY = coordinate(segment + 2, 1);
-      final startWeight = cornerWeight(segment);
-      final endWeight = cornerWeight(segment + 1);
+      final startX = _flightCoordinate(points, count, segment, 0, close);
+      final startY = _flightCoordinate(points, count, segment, 1, close);
+      final endX = _flightCoordinate(points, count, segment + 1, 0, close);
+      final endY = _flightCoordinate(points, count, segment + 1, 1, close);
+      final previousX = _flightCoordinate(points, count, segment - 1, 0, close);
+      final previousY = _flightCoordinate(points, count, segment - 1, 1, close);
+      final nextNextX = _flightCoordinate(points, count, segment + 2, 0, close);
+      final nextNextY = _flightCoordinate(points, count, segment + 2, 1, close);
+      final startWeight = _cornerWeight(points, count, segment, close);
+      final endWeight = _cornerWeight(points, count, segment + 1, close);
       final startHandleX = startX + (endX - previousX) * startWeight / 6;
       final startHandleY = startY + (endY - previousY) * startWeight / 6;
       final endHandleX = endX - (nextNextX - startX) * endWeight / 6;
       final endHandleY = endY - (nextNextY - startY) * endWeight / 6;
-      final chord = math.sqrt(
-        math.pow(endX - startX, 2) + math.pow(endY - startY, 2),
-      );
+      final chordX = endX - startX;
+      final chordY = endY - startY;
+      final chord = math.sqrt(chordX * chordX + chordY * chordY);
       final maxHandle = chord * 0.5;
-      final limitedStart = limitControl(
-        startX,
-        startY,
-        startHandleX,
-        startHandleY,
-        maxHandle,
-      );
-      final limitedEnd = limitControl(
-        endX,
-        endY,
-        endHandleX,
-        endHandleY,
-        maxHandle,
-      );
+      _setLimitedControl(startX, startY, startHandleX, startHandleY, maxHandle);
+      final limitedStartX = _limitedControlX;
+      final limitedStartY = _limitedControlY;
+      _setLimitedControl(endX, endY, endHandleX, endHandleY, maxHandle);
+      final limitedEndX = _limitedControlX;
+      final limitedEndY = _limitedControlY;
       path.cubicTo(
-        limitedStart.$1,
-        limitedStart.$2,
-        limitedEnd.$1,
-        limitedEnd.$2,
+        limitedStartX,
+        limitedStartY,
+        limitedEndX,
+        limitedEndY,
         endX,
         endY,
       );
     }
     if (close) path.close();
-    return path;
   }
 
-  ui.Path _cubicPath(CubicPath source) {
+  double _flightCoordinate(
+      Float64List points, int count, int index, int axis, bool close) {
+    if (close) {
+      index %= count;
+      if (index < 0) index += count;
+    } else {
+      index = index.clamp(0, count - 1);
+    }
+    return points[index * 2 + axis];
+  }
+
+  double _cornerWeight(Float64List points, int count, int index, bool close) {
+    if (!close && (index <= 0 || index >= count - 1)) return 1;
+    final previousX = _flightCoordinate(points, count, index - 1, 0, close);
+    final previousY = _flightCoordinate(points, count, index - 1, 1, close);
+    final currentX = _flightCoordinate(points, count, index, 0, close);
+    final currentY = _flightCoordinate(points, count, index, 1, close);
+    final nextX = _flightCoordinate(points, count, index + 1, 0, close);
+    final nextY = _flightCoordinate(points, count, index + 1, 1, close);
+    final incomingX = currentX - previousX;
+    final incomingY = currentY - previousY;
+    final outgoingX = nextX - currentX;
+    final outgoingY = nextY - currentY;
+    final incomingLength = math.sqrt(
+      incomingX * incomingX + incomingY * incomingY,
+    );
+    final outgoingLength = math.sqrt(
+      outgoingX * outgoingX + outgoingY * outgoingY,
+    );
+    if (incomingLength < 1e-9 || outgoingLength < 1e-9) return 0;
+    final turn = math.atan2(
+      (incomingX * outgoingY - incomingY * outgoingX).abs(),
+      incomingX * outgoingX + incomingY * outgoingY,
+    );
+    const softenUntil = 0.28;
+    const sharpAt = 0.62;
+    if (turn <= softenUntil) return 1;
+    if (turn >= sharpAt) return 0;
+    return (sharpAt - turn) / (sharpAt - softenUntil);
+  }
+
+  void _setLimitedControl(double baseX, double baseY, double controlX,
+      double controlY, double maxDistance) {
+    final deltaX = controlX - baseX;
+    final deltaY = controlY - baseY;
+    final distance = math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    if (distance <= maxDistance || distance < 1e-9) {
+      _limitedControlX = controlX;
+      _limitedControlY = controlY;
+      return;
+    }
+    final scale = maxDistance / distance;
+    _limitedControlX = baseX + deltaX * scale;
+    _limitedControlY = baseY + deltaY * scale;
+  }
+
+  void _appendCubicPath(ui.Path path, CubicPath source) {
     final points = source.points;
-    final path = ui.Path()..moveTo(points[0], points[1]);
+    path.moveTo(points[0], points[1]);
     for (var i = 2; i < points.length; i += 6) {
       path.cubicTo(points[i], points[i + 1], points[i + 2], points[i + 3],
           points[i + 4], points[i + 5]);
     }
     if (source.closed) path.close();
-    return path;
   }
 
   @override
@@ -1092,6 +1190,7 @@ final class MeldDiagnosticsOverlay extends StatelessWidget {
                     Text('plan: ${diagnostics.elapsedMicros} µs'),
                   ],
                   Text('cache: ${stats.hits}/${stats.misses} hits'),
+                  Text('cache bytes: ${stats.bytes}'),
                 ],
               ),
             ),
@@ -1122,6 +1221,10 @@ final class _MeldIconState extends State<MeldIcon>
     super.didChangeDependencies();
     controller.attach(this);
     _applyOptions();
+    // `TickerMode.of` keeps the package compatible with the declared Flutter
+    // minimum; the newer valuesOf API is not available on all supported SDKs.
+    // ignore: deprecated_member_use
+    controller.tickerEnabled = TickerMode.of(context);
     if (!_didInitializeDependencies &&
         widget.from != null &&
         widget.to != null) {
@@ -1145,6 +1248,8 @@ final class _MeldIconState extends State<MeldIcon>
       _didInitializeDependencies = false;
     }
     _applyOptions();
+    // ignore: deprecated_member_use
+    controller.tickerEnabled = TickerMode.of(context);
     if (widget.from != null && widget.to != null) {
       if (widget.from != oldWidget.from) controller.set(widget.from!);
       controller.seek(widget.to!, widget.progress ?? 0);
@@ -1180,6 +1285,12 @@ final class _MeldIconState extends State<MeldIcon>
 
   @override
   Widget build(BuildContext context) {
+    if (!widget.size.isFinite || widget.size <= 0) {
+      throw MeldException(
+        'invalid-icon-size',
+        'MeldIcon size must be finite and greater than zero.',
+      );
+    }
     final theme = MeldIconTheme.of(context);
     final color = widget.color ??
         theme.color ??

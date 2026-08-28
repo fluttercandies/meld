@@ -6,10 +6,12 @@ import 'model.dart';
 const double _lengthWeight = 0.35;
 const double _rotationTieBreak = 0.05;
 const double _globalEpsilon = 5e-3;
+const double _maxLogScale = 128;
 
 double _finiteNumber(double value, String name) {
   if (!value.isFinite) {
-    throw MeldException('invalid-plan', 'Plan field "$name" must be finite.');
+    throw MeldException(
+        'invalid-plan', 'Plan field "$name" must be finite and in range.');
   }
   return value;
 }
@@ -23,14 +25,18 @@ double _nonNegativeNumber(double value, String name) {
 }
 
 void _validatePair((double, double) value, String name) {
-  if (!value.$1.isFinite || !value.$2.isFinite) {
+  if (!value.$1.isFinite ||
+      !value.$2.isFinite ||
+      value.$1.abs() > kMeldMaxCoordinate ||
+      value.$2.abs() > kMeldMaxCoordinate) {
     throw MeldException('invalid-plan', 'Plan field "$name" must be finite.');
   }
 }
 
 void _validatePlanBuffer(Float64List values, String name) {
   if (values.length > kMeldMaxSamplePoints * 2 ||
-      values.any((value) => !value.isFinite)) {
+      values.any(
+          (value) => !value.isFinite || value.abs() > kMeldMaxCoordinate)) {
     throw MeldException(
         'invalid-plan', 'Plan field "$name" contains invalid coordinates.');
   }
@@ -94,6 +100,12 @@ final class MeldPlanItem {
     _validatePlanBuffer(this.orientedB, 'orientedB');
     _validatePair(centerA, 'centerA');
     _validatePair(centerB, 'centerB');
+    if (logScale.abs() > _maxLogScale) {
+      throw MeldException(
+        'invalid-plan',
+        'Plan field "logScale" is outside the supported interpolation range.',
+      );
+    }
     if (this.a.length != this.centeredA.length ||
         this.a.length != this.transformedB.length ||
         this.a.length != this.orientedB.length ||
@@ -250,6 +262,13 @@ final class MeldPlan {
         throw MeldException(
             'invalid-plan', 'Plan item buffers do not match sampleCount.');
       }
+    }
+    diagnostics.validate();
+    if (diagnostics.sampleCount != sampleCount) {
+      throw MeldException(
+        'invalid-plan',
+        'Plan diagnostics sampleCount does not match the plan.',
+      );
     }
   }
 

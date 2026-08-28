@@ -92,6 +92,30 @@ void main() {
         values.every((value) => value >= -1e-9 && value <= 24 + 1e-9), isTrue);
   });
 
+  test('ignores SVG comments, style and script payloads', () {
+    const source = SvgMarkupSource(
+      '<svg viewBox="0 0 24 24">'
+      '<!-- <path d="M0 0L24 24"/> -->'
+      '<style>.icon { fill: none; }</style>'
+      '<script>const fake = "<path d=\\"M0 0L24 24\\"/>";</script>'
+      '<path d="M2 2L22 22"/>'
+      '</svg>',
+    );
+    expect(iconToCubics(source), hasLength(1));
+  });
+
+  test('rejects negative primitive radii with diagnostics', () {
+    expect(
+      () => iconToCubics(
+        GeometrySource(<GeometryNode>[
+          GeometryNode('circle', <String, Object?>{'r': -1}),
+        ]),
+      ),
+      throwsA(isA<MeldException>()
+          .having((error) => error.code, 'code', 'invalid-radius')),
+    );
+  });
+
   test('retains the source paint intent for Original rendering', () {
     const pathFill = PathDataSource(
       'M4 4H20V20H4Z',
@@ -167,6 +191,15 @@ void main() {
     expect(stats.hits, 1);
     expect(stats.sampleHits, 1);
     expect(cachedPlan.diagnostics.cacheHit, isTrue);
+    expect(stats.bytes, greaterThan(0));
+    expect(stats.bytes, stats.sampleBytes + stats.planBytes);
+  });
+
+  test('cache byte budget evicts oversized plans', () {
+    final engine = MeldEngine(maxCacheEntries: 8, maxCacheBytes: 64);
+    engine.plan(menu, close);
+    expect(engine.cacheStats.planBytes, 0);
+    expect(engine.cacheStats.entries, 0);
   });
 
   test('cached geometry buffers cannot be mutated by callers', () {
@@ -207,6 +240,19 @@ void main() {
       throwsA(isA<MeldException>()
           .having((error) => error.code, 'code', 'invalid-spring-config')),
     );
+    expect(
+      () => CubicPath(
+        Float64List.fromList(<double>[0, 0, 1e10, 0, 1e10, 0, 1e10, 0]),
+        closed: false,
+      ),
+      throwsA(isA<MeldException>()
+          .having((error) => error.code, 'code', 'invalid-coordinate')),
+    );
+    expect(
+      () => parsePath('M0 0L10000000000 0'),
+      throwsA(isA<MeldException>()
+          .having((error) => error.code, 'code', 'invalid-path')),
+    );
   });
 
   test('structured geometry attributes are deeply immutable', () {
@@ -222,6 +268,22 @@ void main() {
     expect(
       () => frozen[0] = '1',
       throwsUnsupportedError,
+    );
+    expect(
+      () => GeometryNode(
+        'path',
+        <String, Object?>{'d': StringBuffer('M0 0L1 1')},
+      ),
+      throwsA(isA<MeldException>()
+          .having((error) => error.code, 'code', 'invalid-geometry-attribute')),
+    );
+    expect(
+      () => GeometryNode(
+        'circle',
+        <String, Object?>{'r': double.nan},
+      ),
+      throwsA(isA<MeldException>()
+          .having((error) => error.code, 'code', 'invalid-geometry-attribute')),
     );
   });
 
@@ -239,6 +301,39 @@ void main() {
       () => interpolatePlan(plan, double.nan, allocateOutputs(plan)),
       throwsA(isA<MeldException>()
           .having((error) => error.code, 'code', 'invalid-progress')),
+    );
+  });
+
+  test('rejects unsafe serialized interpolation scale and frame size', () {
+    final plan = MeldEngine().plan(menu, close);
+    final item = plan.items.first;
+    expect(
+      () => MeldPlanItem(
+        a: item.a,
+        centeredA: item.centeredA,
+        transformedB: item.transformedB,
+        orientedB: item.orientedB,
+        centerA: item.centerA,
+        centerB: item.centerB,
+        theta: item.theta,
+        logScale: 1e9,
+        residual: item.residual,
+        closed: item.closed,
+      ),
+      throwsA(isA<MeldException>()
+          .having((error) => error.code, 'code', 'invalid-plan')),
+    );
+    expect(
+      () => MeldFrame(
+        paths: List<Float64List>.generate(
+          513,
+          (_) => Float64List(16),
+        ),
+        progress: 0,
+        velocity: 0,
+      ),
+      throwsA(isA<MeldException>()
+          .having((error) => error.code, 'code', 'frame-limit')),
     );
   });
 }

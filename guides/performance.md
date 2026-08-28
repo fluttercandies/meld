@@ -23,9 +23,13 @@ mode fixed when comparing results.
 - Keep `MeldDiagnosticsOverlay` out of release layouts.
 - Use `MeldPaintStyle.original` to retain a filled glyph's source intent instead
   of inflating it into stroke paths.
+- `MeldIcon` controllers share one frame ticker per Flutter isolate and the
+  painter reuses its `Path` and `Paint` instances. Avoid rebuilding large
+  ancestor subtrees from a per-frame listener when targeting 120 Hz displays.
 
-Plan and sample caches are separate bounded LRU caches. Clearing a controller
-does not allow a process-wide cache to grow without limit.
+Plan and sample caches are separate bounded LRU caches with both entry and
+approximate byte limits. `MeldCacheStats.bytes` exposes the retained budget so
+production diagnostics can detect pressure before it becomes a GC problem.
 
 ## Regression policy
 

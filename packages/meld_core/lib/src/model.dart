@@ -7,6 +7,16 @@ import 'dart:typed_data';
 const int kMeldMaxCubicSegments = 16384;
 const int kMeldMaxSamplePoints = 4096;
 
+/// Maximum absolute coordinate accepted at a public geometry boundary.
+///
+/// Keeping coordinates within a practical range prevents intermediate
+/// centroid, distance and transform calculations from overflowing while
+/// still accommodating large engineering drawings and view boxes.
+const double kMeldMaxCoordinate = 1e9;
+
+/// Maximum spring parameter accepted by the deterministic integrator.
+const double kMeldMaxSpringParameter = 1e6;
+
 /// A structured failure from the parser, normalizer or planner.
 class MeldException extends FormatException {
   MeldException(
@@ -124,7 +134,7 @@ MeldSourcePaintStyle _inferSvgPaintStyle(String markup) {
     throw MeldException(
         'svg-limit', 'SVG markup exceeds the 1 MiB safety limit.');
   }
-  final body = markup.replaceAll(
+  final body = _sanitizeSvgMarkup(markup).replaceAll(
     RegExp(r'<(defs|mask|clippath|symbol)\b[^>]*>[\s\S]*?<\/\1>',
         caseSensitive: false),
     '',
@@ -178,6 +188,11 @@ MeldSourcePaintStyle _inferSvgPaintStyle(String markup) {
   if (hasStroke) return MeldSourcePaintStyle.outline;
   return MeldSourcePaintStyle.fill;
 }
+
+String _sanitizeSvgMarkup(String markup) =>
+    markup.replaceAll(RegExp(r'<!--[\s\S]*?-->'), '').replaceAll(
+        RegExp(r'<(script|style)\b[^>]*>[\s\S]*?<\/\1>', caseSensitive: false),
+        '');
 
 Map<String, String> _parseInlineSvgPaint(String raw) {
   final attributes = <String, String>{};
@@ -249,20 +264,46 @@ final class GeometryNode {
 }
 
 Map<String, Object?> _freezeAttributes(Map<String, Object?> input) {
-  return Map<String, Object?>.unmodifiable({
-    for (final entry in input.entries) entry.key: _freezeAttribute(entry.value),
-  });
+  final output = <String, Object?>{};
+  for (final entry in input.entries) {
+    output[entry.key] = _freezeAttribute(entry.value);
+  }
+  return Map<String, Object?>.unmodifiable(output);
 }
 
 Object? _freezeAttribute(Object? value) {
-  if (value is Map<String, Object?>) return _freezeAttributes(value);
-  if (value is List<Object?>) {
-    return List<Object?>.unmodifiable(value.map(_freezeAttribute));
+  if (value is Map) {
+    final output = <String, Object?>{};
+    for (final entry in value.entries) {
+      if (entry.key is! String) {
+        throw MeldException('invalid-geometry-attribute',
+            'Nested attribute keys must be strings.');
+      }
+      output[entry.key as String] = _freezeAttribute(entry.value);
+    }
+    return Map<String, Object?>.unmodifiable(output);
   }
   if (value is List) {
     return List<Object?>.unmodifiable(value.map(_freezeAttribute));
   }
-  return value;
+  if (value is num) {
+    final number = value.toDouble();
+    if (!number.isFinite || number.abs() > kMeldMaxCoordinate) {
+      throw MeldException(
+        'invalid-geometry-attribute',
+        'Numeric geometry attributes must be finite and no greater than '
+            '$kMeldMaxCoordinate in absolute value.',
+      );
+    }
+    return value;
+  }
+  if (value == null || value is String || value is bool) {
+    return value;
+  }
+  throw MeldException(
+    'invalid-geometry-attribute',
+    'Geometry attributes must contain only scalar, list or map values.',
+  );
 }
 
 String _validateGeometryTag(String value) {
@@ -345,6 +386,8 @@ final class MeldViewBox {
   /// Validates a viewBox created through the const constructor.
   void validate() {
     if (![minX, minY, width, height].every((value) => value.isFinite) ||
+        [minX, minY, width, height]
+            .any((value) => value.abs() > kMeldMaxCoordinate) ||
         width <= 0 ||
         height <= 0) {
       throw MeldException(
@@ -466,10 +509,13 @@ final class SpringConfig {
   void validate() {
     if (!stiffness.isFinite ||
         stiffness <= 0 ||
+        stiffness > kMeldMaxSpringParameter ||
         !damping.isFinite ||
         damping < 0 ||
+        damping > kMeldMaxSpringParameter ||
         !mass.isFinite ||
         mass <= 0 ||
+        mass > kMeldMaxSpringParameter ||
         !maxStep.isFinite ||
         maxStep <= 0 ||
         maxStep > 1) {
@@ -529,6 +575,27 @@ final class PlanDiagnostics {
   final bool cacheHit;
   final double samplingError;
 
+  void validate() {
+    if (sourceSubpaths <= 0 ||
+        sourceSubpaths > 512 ||
+        targetSubpaths <= 0 ||
+        targetSubpaths > 512 ||
+        sampleCount < 8 ||
+        sampleCount > kMeldMaxSamplePoints ||
+        elapsedMicros < 0 ||
+        !meanResidual.isFinite ||
+        meanResidual < 0 ||
+        !maxResidual.isFinite ||
+        maxResidual < 0 ||
+        !samplingError.isFinite ||
+        samplingError < 0) {
+      throw MeldException(
+        'invalid-plan',
+        'Plan diagnostics contain invalid counts, timings or residuals.',
+      );
+    }
+  }
+
   Map<String, Object?> toJson() => <String, Object?>{
         'sourceSubpaths': sourceSubpaths,
         'targetSubpaths': targetSubpaths,
@@ -545,7 +612,9 @@ final class PlanDiagnostics {
     int integer(String key) {
       final value = json[key];
       if (value is int) return value;
-      if (value is num && value.isFinite) return value.toInt();
+      if (value is num && value.isFinite && value == value.toInt()) {
+        return value.toInt();
+      }
       throw MeldException(
           'invalid-plan', 'Diagnostic field "$key" must be an integer.');
     }
@@ -587,7 +656,14 @@ final class MorphSnapshot {
     required this.flying,
     this.velocity = 0,
     this.diagnostics,
-  }) : paths = List<SampledPath>.unmodifiable(paths);
+  }) : paths = _freezeSnapshotPaths(paths) {
+    if (!progress.isFinite || !velocity.isFinite) {
+      throw MeldException(
+        'invalid-snapshot',
+        'Snapshot progress and velocity must be finite.',
+      );
+    }
+  }
 
   final List<SampledPath> paths;
   final double progress;
@@ -595,6 +671,20 @@ final class MorphSnapshot {
   final bool flying;
   final double velocity;
   final PlanDiagnostics? diagnostics;
+}
+
+List<SampledPath> _freezeSnapshotPaths(Iterable<SampledPath> input) {
+  final output = <SampledPath>[];
+  for (final path in input) {
+    if (output.length >= 512) {
+      throw MeldException(
+        'snapshot-limit',
+        'A morph snapshot may contain at most 512 paths.',
+      );
+    }
+    output.add(path);
+  }
+  return List<SampledPath>.unmodifiable(output);
 }
 
 Float64List _freezeCubicPoints(Float64List input) {
@@ -612,10 +702,11 @@ Float64List _freezeCubicPoints(Float64List input) {
     );
   }
   for (final value in input) {
-    if (!value.isFinite) {
+    if (!value.isFinite || value.abs() > kMeldMaxCoordinate) {
       throw MeldException(
         'invalid-coordinate',
-        'Cubic path coordinates must be finite.',
+        'Cubic path coordinates must be finite and no greater than '
+            '$kMeldMaxCoordinate in absolute value.',
       );
     }
   }
@@ -635,10 +726,11 @@ Float64List _freezeSampledPoints(Float64List input) {
     );
   }
   for (final value in input) {
-    if (!value.isFinite) {
+    if (!value.isFinite || value.abs() > kMeldMaxCoordinate) {
       throw MeldException(
         'invalid-coordinate',
-        'Sampled path coordinates must be finite.',
+        'Sampled path coordinates must be finite and no greater than '
+            '$kMeldMaxCoordinate in absolute value.',
       );
     }
   }

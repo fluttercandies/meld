@@ -21,7 +21,7 @@ final frame = allocateOutputs(plan);
 interpolatePlan(plan, 0.5, frame);
 ```
 
-The engine handles SVG commands and primitives, viewBox fitting, arc-length sampling, subpath matching, topology-aware alignment, similarity transforms, spring stepping, bounded caches, diagnostics, and JSON plan serialization. Endpoint frames remain canonical while flight frames use reusable typed buffers.
+The engine handles SVG commands and primitives, viewBox fitting, arc-length sampling, subpath matching, topology-aware alignment, similarity transforms, spring stepping, bounded caches, diagnostics, and JSON plan serialization. Endpoint frames remain canonical while flight frames use reusable typed buffers. Set `maxCacheBytes` when an application needs a tighter memory budget; the retained byte estimate is available from `engine.cacheStats`.
 
 Sources carry the paint intent used by Flutter's `MeldPaintStyle.original`:
 `PathDataSource`, `GeometrySource`, and `CubicSource` accept explicit

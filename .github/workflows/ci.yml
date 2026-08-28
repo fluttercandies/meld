@@ -19,6 +19,7 @@ jobs:
           melos-version: 6.2.0
       - run: melos bootstrap
       - run: melos run format
+      - run: melos run brand:check
       - run: melos run analyze
       - run: melos run test
       - run: melos run coverage:check

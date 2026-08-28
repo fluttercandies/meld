@@ -103,7 +103,11 @@ final json = plan.toJson();
 final restored = MeldPlan.fromJson(json);
 ```
 
-Plan 是确定性的并且可以序列化。缓存是有界 LRU，并提供命中/未命中指标。`MeldDiagnosticsOverlay` 是可选的调试面板，可查看缓存、残差、采样点、弹簧和规划耗时；发布版不需要时不要放入布局。
+Plan 是确定性的并且可以序列化。缓存是同时受条目数和估算字节数限制的有界 LRU，并通过 `MeldCacheStats` 提供命中/未命中与占用指标。`MeldDiagnosticsOverlay` 是可选的调试面板，可查看缓存、残差、采样点、弹簧和规划耗时；发布版不需要时不要放入布局。
+
+Flutter 层在每个 isolate 内共享一个帧调度器，并在飞行态复用 painter 的
+`Path`/`Paint` 缓冲，从而尽量减少高刷新率屏幕上的每帧工作。实际是否达到
+120 Hz 仍取决于设备、图形复杂度和应用其余部分的帧预算。
 
 运行可复现的桌面 benchmark：
 

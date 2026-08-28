@@ -140,11 +140,17 @@ List<CubicPath> _markupToCubics(String markup, {bool applyViewBox = true}) {
     throw _invalid('invalid-svg-markup',
         'SvgMarkupSource expects SVG markup, not raw path data.');
   }
-  final body = markup.replaceAll(
-    RegExp(r'<(defs|mask|clippath|symbol)\b[^>]*>[\s\S]*?<\/\1>',
-        caseSensitive: false),
-    '',
-  );
+  final body = markup
+      .replaceAll(RegExp(r'<!--[\s\S]*?-->'), '')
+      .replaceAll(
+          RegExp(r'<(script|style)\b[^>]*>[\s\S]*?<\/\1>',
+              caseSensitive: false),
+          '')
+      .replaceAll(
+        RegExp(r'<(defs|mask|clippath|symbol)\b[^>]*>[\s\S]*?<\/\1>',
+            caseSensitive: false),
+        '',
+      );
   final root = RegExp(r'<svg\b([^>]*)>', caseSensitive: false).firstMatch(body);
   MeldViewBox? viewBox;
   if (root != null) {
@@ -204,8 +210,13 @@ double _number(Map<String, Object?> attrs, String key, [double fallback = 0]) {
   if (value == null) return fallback;
   final result =
       value is num ? value.toDouble() : double.tryParse(value.toString());
-  if (result == null || !result.isFinite)
-    throw _invalid('invalid-number', 'Attribute $key must be finite.');
+  if (result == null || !result.isFinite || result.abs() > kMeldMaxCoordinate) {
+    throw _invalid(
+      'invalid-number',
+      'Attribute $key must be finite and no greater than '
+          '$kMeldMaxCoordinate in absolute value.',
+    );
+  }
   return result;
 }
 
@@ -213,8 +224,13 @@ List<double> _points(Object? value) {
   final text = value?.toString().trim() ?? '';
   if (text.isEmpty) return const <double>[];
   final values = text.split(RegExp(r'[\s,]+')).map(double.tryParse).toList();
-  if (values.any((value) => value == null || !value.isFinite)) {
-    throw _invalid('invalid-points', 'Polyline points must be finite numbers.');
+  if (values.any((value) =>
+      value == null || !value.isFinite || value.abs() > kMeldMaxCoordinate)) {
+    throw _invalid(
+      'invalid-points',
+      'Polyline points must be finite and no greater than '
+          '$kMeldMaxCoordinate in absolute value.',
+    );
   }
   return values.cast<double>();
 }
@@ -229,6 +245,9 @@ CubicPath? _polyPath(List<double> values, bool closed) {
 }
 
 CubicPath? _ellipsePath(double cx, double cy, double rx, double ry) {
+  if (rx < 0 || ry < 0) {
+    throw _invalid('invalid-radius', 'Ellipse radii must be non-negative.');
+  }
   if (rx.abs() < 1e-12 || ry.abs() < 1e-12) return null;
   final builder = _CubicBuilder(cx + rx, cy);
   final kx = kappa * rx;
@@ -250,6 +269,9 @@ CubicPath? _rectPath(Map<String, Object?> attrs) {
   var ry = attrs.containsKey('ry') ? _number(attrs, 'ry') : double.nan;
   if (rx.isNaN) rx = ry.isNaN ? 0 : ry;
   if (ry.isNaN) ry = rx;
+  if (rx < 0 || ry < 0) {
+    throw _invalid('invalid-radius', 'Rectangle radii must be non-negative.');
+  }
   rx = rx.clamp(0, width / 2);
   ry = ry.clamp(0, height / 2);
   if (rx < 1e-12 || ry < 1e-12) {
@@ -378,8 +400,13 @@ final class _CubicBuilder {
 
 MeldSource fitViewBox(MeldSource source, MeldViewBox viewBox,
     {double grid = 24}) {
-  if (!(grid > 0) || !grid.isFinite)
-    throw _invalid('invalid-grid', 'Grid size must be finite and positive.');
+  if (!(grid > 0) || !grid.isFinite || grid > kMeldMaxCoordinate) {
+    throw _invalid(
+      'invalid-grid',
+      'Grid size must be finite, positive and no greater than '
+          '$kMeldMaxCoordinate.',
+    );
+  }
   final rawPaths = switch (source) {
     GeometrySource(:final nodes) => _geometryToCubics(nodes),
     SvgMarkupSource(:final markup) =>
@@ -394,8 +421,13 @@ List<CubicPath> _fitPaths(List<CubicPath> paths, MeldViewBox? viewBox,
     {double grid = 24}) {
   if (viewBox == null) return paths;
   viewBox.validate();
-  if (!(grid > 0) || !grid.isFinite)
-    throw _invalid('invalid-grid', 'Grid size must be finite and positive.');
+  if (!(grid > 0) || !grid.isFinite || grid > kMeldMaxCoordinate) {
+    throw _invalid(
+      'invalid-grid',
+      'Grid size must be finite, positive and no greater than '
+          '$kMeldMaxCoordinate.',
+    );
+  }
   final scale = math.min(grid / viewBox.width, grid / viewBox.height);
   final tx = (grid - viewBox.width * scale) / 2 - viewBox.minX * scale;
   final ty = (grid - viewBox.height * scale) / 2 - viewBox.minY * scale;

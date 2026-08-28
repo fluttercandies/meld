@@ -16,6 +16,9 @@ scripts:
   analyze:
     run: melos exec -- "dart analyze ."
     description: Analyze every workspace package.
+  brand:check:
+    run: dart run tool/check_brand.dart
+    description: Reject forbidden legacy brand names outside reference assets.
   test:
     run: melos run test:dart && melos run test:flutter
     description: Run pure Dart and Flutter test suites.
@@ -23,7 +26,7 @@ scripts:
     run: melos exec --fail-fast --scope=meld_core --scope=meld_font -- "dart test"
     description: Run pure Dart package tests.
   test:flutter:
-    run: melos exec --fail-fast --scope=meld_flutter --scope=meld_showcase -- "flutter test"
+    run: melos exec --concurrency=1 --fail-fast --scope=meld_flutter --scope=meld_showcase -- "flutter test"
     description: Run Flutter widget and showcase tests.
   benchmark:
     run: melos exec --fail-fast --scope=meld_core -- "dart run benchmark/benchmark.dart"
@@ -35,7 +38,7 @@ scripts:
     run: melos run coverage && dart run tool/check_coverage.dart
     description: Collect Flutter coverage and enforce package thresholds.
   coverage:
-    run: melos exec --fail-fast --scope=meld_flutter --scope=meld_showcase -- "flutter test --coverage"
+    run: melos exec --concurrency=1 --fail-fast --scope=meld_flutter --scope=meld_showcase -- "flutter test --coverage"
     description: Collect Flutter package coverage reports.
   build:showcase:
     run: melos exec --fail-fast --scope=meld_showcase -- "flutter build web --release"

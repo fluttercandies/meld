@@ -299,7 +299,13 @@ final class _PathParser {
       if (!exponentDigits) index = exponentStart;
     }
     final value = double.tryParse(data.substring(start, index));
-    if (value == null || !value.isFinite) fail('Number is not finite.');
+    if (value == null || !value.isFinite || value.abs() > kMeldMaxCoordinate) {
+      fail(
+        value == null || !value.isFinite
+            ? 'Number is not finite.'
+            : 'Number exceeds the supported coordinate range.',
+      );
+    }
     return value;
   }
 

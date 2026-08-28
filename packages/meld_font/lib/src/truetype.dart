@@ -36,9 +36,12 @@ final class FontGlyphRef {
 /// variable outlines are rejected explicitly until their geometry semantics
 /// can be represented without losing fidelity.
 MeldSource fontGlyphToSource(FontGlyphRef ref, {double grid = 24}) {
-  if (!grid.isFinite || grid <= 0) {
+  if (!grid.isFinite || grid <= 0 || grid > kMeldMaxCoordinate) {
     throw MeldException(
-        'invalid-grid', 'Grid size must be finite and positive.');
+      'invalid-grid',
+      'Grid size must be finite, positive and no greater than '
+          '$kMeldMaxCoordinate.',
+    );
   }
   try {
     final font = _TrueTypeFont(ref);

@@ -17,6 +17,17 @@ abstract final class _MeldColors {
   static const outline = Color(0x1FFFFFFF);
 }
 
+Color _withOpacity(Color color, double opacity) => Color.fromARGB(
+      // ignore: deprecated_member_use
+      (color.alpha * opacity).round().clamp(0, 255),
+      // ignore: deprecated_member_use
+      color.red,
+      // ignore: deprecated_member_use
+      color.green,
+      // ignore: deprecated_member_use
+      color.blue,
+    );
+
 void main() => runApp(const MeldShowcaseApp());
 
 class MeldShowcaseApp extends StatelessWidget {
@@ -952,7 +963,7 @@ class _EndpointCard extends StatelessWidget {
       label: 'Choose ${option.name} as $eyebrow icon',
       child: Material(
         color: selected
-            ? scheme.primary.withValues(alpha: 0.14)
+            ? _withOpacity(scheme.primary, 0.14)
             : _MeldColors.surfaceRaised,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
@@ -1080,7 +1091,7 @@ class _OptionTile extends StatelessWidget {
       label: 'Use ${option.name} as icon',
       child: Material(
         color: selected
-            ? scheme.primary.withValues(alpha: 0.16)
+            ? _withOpacity(scheme.primary, 0.16)
             : _MeldColors.surfaceRaised,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
@@ -1156,7 +1167,7 @@ class _PairTile extends StatelessWidget {
       label: 'Select ${pair.name}',
       child: Material(
         color: selected
-            ? scheme.primary.withValues(alpha: 0.16)
+            ? _withOpacity(scheme.primary, 0.16)
             : _MeldColors.surfaceRaised,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(

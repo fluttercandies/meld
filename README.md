@@ -103,7 +103,16 @@ final json = plan.toJson();
 final restored = MeldPlan.fromJson(json);
 ```
 
-Plans are deterministic and serializable. Caches are bounded LRU caches with hit/miss metrics. `MeldDiagnosticsOverlay` is an opt-in panel for cache, residual, sample, spring, and planning information; keep it out of release layouts when you do not need it.
+Plans are deterministic and serializable. Caches are bounded LRU caches with
+entry and approximate byte budgets; hit/miss and retained-byte metrics are
+available through `MeldCacheStats`. `MeldDiagnosticsOverlay` is an opt-in panel
+for cache, residual, sample, spring, and planning information; keep it out of
+release layouts when you do not need it.
+
+The Flutter layer uses one shared frame scheduler per isolate and reuses the
+painter's `Path`/`Paint` buffers during flight. This keeps per-frame work small
+enough for high-refresh displays; actual 120 Hz delivery still depends on the
+device, scene complexity, and the rest of the app's frame budget.
 
 Run the reproducible desktop benchmark from the workspace:
 

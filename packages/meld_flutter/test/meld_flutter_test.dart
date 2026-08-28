@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 import 'dart:typed_data';
 
@@ -60,6 +61,40 @@ void main() {
     controller.detach();
     expect((await transition).end, MeldTransitionEnd.cancelled);
     controller.dispose();
+  });
+
+  test('disposing an attached controller releases its shared ticker', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    final controller = MeldIconController(initialSource: _line);
+    controller.attach(const TestVSync());
+    final transition = controller.morphTo(_cross);
+
+    controller.dispose();
+
+    expect(controller.status, MeldIconStatus.disposed);
+    expect((await transition).end, MeldTransitionEnd.disposed);
+  });
+
+  testWidgets('many attached controllers share one frame scheduler',
+      (tester) async {
+    final controllers = <MeldIconController>[
+      for (var i = 0; i < 100; i++)
+        MeldIconController(initialSource: _line)
+          ..motionMode = MeldMotionMode.always,
+    ];
+    final vsync = const TestVSync();
+    for (final controller in controllers) {
+      controller.attach(vsync);
+      unawaited(controller.morphTo(_cross));
+    }
+
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(
+        controllers.where((controller) => controller.isAnimating), isNotEmpty);
+
+    for (final controller in controllers) {
+      controller.dispose();
+    }
   });
 
   test('invalid set enters failed state and a valid seek recovers', () {
