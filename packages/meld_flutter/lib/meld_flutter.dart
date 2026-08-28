@@ -982,6 +982,15 @@ final class MeldIconPainter extends CustomPainter {
     path.moveTo(points[0], points[1]);
     if (count < 2) return;
 
+    // Most icon stroke contours are straight lines. Their sampled points are
+    // exactly collinear during affine morphs, so the equivalent straight cubic
+    // sequence avoids the per-segment tangent, angle, and control-point math
+    // below. Curved contours and closed paths keep the smooth reconstruction.
+    if (!close && _isNearlyStraight(points, count)) {
+      _appendStraightFlightPath(path, points, count);
+      return;
+    }
+
     final segmentCount = close ? count : count - 1;
     for (var segment = 0; segment < segmentCount; segment++) {
       final startX = _flightCoordinate(points, count, segment, 0, close);
@@ -1018,6 +1027,53 @@ final class MeldIconPainter extends CustomPainter {
       );
     }
     if (close) path.close();
+  }
+
+  bool _isNearlyStraight(Float64List points, int count) {
+    final startX = points[0];
+    final startY = points[1];
+    final last = (count - 1) * 2;
+    final deltaX = points[last] - startX;
+    final deltaY = points[last + 1] - startY;
+    final span = deltaX.abs() + deltaY.abs();
+    if (span < 1e-9) {
+      for (var i = 1; i < count; i++) {
+        final offset = i * 2;
+        final x = points[offset] - startX;
+        final y = points[offset + 1] - startY;
+        if (x * x + y * y > 1e-10) return false;
+      }
+      return true;
+    }
+    final tolerance = math.max(1e-5, span * 1e-5);
+    for (var i = 1; i < count - 1; i++) {
+      final offset = i * 2;
+      final cross = (points[offset] - startX) * deltaY -
+          (points[offset + 1] - startY) * deltaX;
+      if (cross.abs() > tolerance) return false;
+    }
+    return true;
+  }
+
+  void _appendStraightFlightPath(ui.Path path, Float64List points, int count) {
+    for (var segment = 0; segment < count - 1; segment++) {
+      final start = segment * 2;
+      final end = start + 2;
+      final previous = segment > 0 ? start - 2 : start;
+      final nextNext = segment + 2 < count ? end + 2 : end;
+      final startX = points[start];
+      final startY = points[start + 1];
+      final endX = points[end];
+      final endY = points[end + 1];
+      path.cubicTo(
+        startX + (endX - points[previous]) / 6,
+        startY + (endY - points[previous + 1]) / 6,
+        endX - (points[nextNext] - startX) / 6,
+        endY - (points[nextNext + 1] - startY) / 6,
+        endX,
+        endY,
+      );
+    }
   }
 
   double _flightCoordinate(
