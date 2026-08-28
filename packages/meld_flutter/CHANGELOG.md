@@ -1,3 +1,9 @@
+## 1.0.1
+
+- Preserved font compound contour holes during fill-to-fill surjective flights.
+- Collapsed synthetic duplicate fill contours smoothly without changing stroke paths.
+- Contracted fading outlines with their paint weight to remove endpoint halos.
+
 ## 1.0.0
 
 - Initial Flutter widget, painter, controller, theme and diagnostics APIs.

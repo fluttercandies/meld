@@ -1,6 +1,6 @@
 name: meld
 description: Production-grade vector shape morphing for Flutter with spring physics.
-version: 1.0.0
+version: 1.0.1
 repository: https://github.com/fluttercandies/meld
 issue_tracker: https://github.com/fluttercandies/meld/issues
 license: MIT
@@ -17,9 +17,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  meld_core: ^1.0.0
-  meld_font: ^1.0.0
-  meld_flutter: ^1.0.0
+  meld_core: ^1.0.1
+  meld_font: ^1.0.1
+  meld_flutter: ^1.0.1
 
 dev_dependencies:
   flutter_test:

@@ -836,7 +836,9 @@ final class MeldIconPainter extends CustomPainter {
   final ui.Path _closedPath = ui.Path()..fillType = ui.PathFillType.evenOdd;
   final ui.Path _openPath = ui.Path();
   final ui.Path _segmentPath = ui.Path();
-  final Set<int> _filledContourIndices = <int>{};
+  final Set<int> _filledSourceIndices = <int>{};
+  final Set<int> _filledTargetIndices = <int>{};
+  final Float64List _collapseMatrix = Float64List(16);
   double _limitedControlX = 0;
   double _limitedControlY = 0;
 
@@ -853,6 +855,7 @@ final class MeldIconPainter extends CustomPainter {
     _strokePaint.color = color;
     _fillPaint.color = color;
     final progress = controller.progress;
+    final paintProgress = progress.clamp(0, 1).toDouble();
     final atCanonicalEndpoint =
         !controller.isAnimating && (progress <= 1e-6 || progress >= 1 - 1e-6);
     final outputs = atCanonicalEndpoint ? null : controller.flightPaths;
@@ -875,26 +878,39 @@ final class MeldIconPainter extends CustomPainter {
     final targetHasFill = _fillWeight(targetPaintStyle) > 1e-6;
     final hasSurjectiveFillPairing = plan != null &&
         plan.diagnostics.sourceSubpaths != plan.diagnostics.targetSubpaths;
+    final collapseSurjectiveFill = paintStyle == MeldPaintStyle.original &&
+        hasSurjectiveFillPairing &&
+        sourceHasFill &&
+        targetHasFill;
     final deduplicateFillContours = paintStyle == MeldPaintStyle.original &&
         hasSurjectiveFillPairing &&
-        (sourceHasFill || targetHasFill);
-    final deduplicateBySource = deduplicateFillContours &&
-        (sourceHasFill != targetHasFill
-            ? sourceHasFill
-            : plan.diagnostics.sourceSubpaths <
-                plan.diagnostics.targetSubpaths);
-    final filledContourIndices =
-        deduplicateFillContours ? (_filledContourIndices..clear()) : null;
+        (sourceHasFill || targetHasFill) &&
+        !collapseSurjectiveFill;
+    final collapseBySource = plan != null &&
+        plan.diagnostics.sourceSubpaths < plan.diagnostics.targetSubpaths;
+    final deduplicateBySource = deduplicateFillContours && sourceHasFill;
+    late final Set<int>? filledContourIndices;
+    if (collapseSurjectiveFill) {
+      filledContourIndices =
+          collapseBySource ? _filledSourceIndices : _filledTargetIndices;
+      filledContourIndices.clear();
+    } else if (deduplicateFillContours) {
+      filledContourIndices =
+          deduplicateBySource ? _filledSourceIndices : _filledTargetIndices;
+      filledContourIndices.clear();
+    } else {
+      filledContourIndices = null;
+    }
     if (paintStyle == MeldPaintStyle.original) {
       final fillOpacity = _lerp(
         _fillWeight(currentPaintStyle),
         _fillWeight(targetPaintStyle),
-        progress.clamp(0, 1).toDouble(),
+        paintProgress,
       );
       final strokeOpacity = _lerp(
         _strokeWeight(currentPaintStyle),
         _strokeWeight(targetPaintStyle),
-        progress.clamp(0, 1).toDouble(),
+        paintProgress,
       );
       needsClosedPath = fillOpacity > 1e-6;
       needsOpenPath = fillOpacity > 1e-6 && strokeOpacity <= 1e-6;
@@ -914,14 +930,26 @@ final class MeldIconPainter extends CustomPainter {
           // keeps the filled source visible during the flight without adding
           // a closing edge to the stroke path.
           final item = plan == null ? null : plan.items[i];
-          final contourIndex = deduplicateBySource
-              ? item?.sourceIndex ?? i
-              : item?.targetIndex ?? i;
-          final shouldFill = filledContourIndices == null ||
-              filledContourIndices.add(contourIndex);
-          if (needsClosedPath &&
-              (closed[i] || paintStyle == MeldPaintStyle.original) &&
-              shouldFill) {
+          final canFill = needsClosedPath &&
+              (closed[i] || paintStyle == MeldPaintStyle.original);
+          if (canFill && collapseSurjectiveFill) {
+            final contourIndex = collapseBySource
+                ? item?.sourceIndex ?? i
+                : item?.targetIndex ?? i;
+            final isPrimary = filledContourIndices!.add(contourIndex);
+            if (isPrimary) {
+              _closedPath.addPath(_segmentPath, ui.Offset.zero);
+            } else {
+              final collapseScale =
+                  collapseBySource ? paintProgress : 1 - paintProgress;
+              _addCollapsedFillPath(
+                  _closedPath, _segmentPath, outputs[i], collapseScale);
+            }
+          } else if (canFill &&
+              (filledContourIndices == null ||
+                  filledContourIndices.add(deduplicateBySource
+                      ? item?.sourceIndex ?? i
+                      : item?.targetIndex ?? i))) {
             _closedPath.addPath(_segmentPath, ui.Offset.zero);
           } else if (needsOpenPath && !closed[i]) {
             _openPath.addPath(_segmentPath, ui.Offset.zero);
@@ -1208,6 +1236,45 @@ final class MeldIconPainter extends CustomPainter {
           points[i + 4], points[i + 5]);
     }
     if (source.closed) path.close();
+  }
+
+  void _addCollapsedFillPath(
+      ui.Path target, ui.Path source, Float64List points, double scale) {
+    var centerX = 0.0;
+    var centerY = 0.0;
+    final count = points.length ~/ 2;
+    for (var i = 0; i < count; i++) {
+      centerX += points[i * 2];
+      centerY += points[i * 2 + 1];
+    }
+    centerX /= count;
+    centerY /= count;
+    if (scale <= 1e-6) {
+      target.moveTo(centerX, centerY);
+      return;
+    }
+    if (scale >= 1 - 1e-6) {
+      target.addPath(source, ui.Offset.zero);
+      return;
+    }
+    _collapseMatrix
+      ..[0] = scale
+      ..[1] = 0
+      ..[2] = 0
+      ..[3] = 0
+      ..[4] = 0
+      ..[5] = scale
+      ..[6] = 0
+      ..[7] = 0
+      ..[8] = 0
+      ..[9] = 0
+      ..[10] = 1
+      ..[11] = 0
+      ..[12] = centerX * (1 - scale)
+      ..[13] = centerY * (1 - scale)
+      ..[14] = 0
+      ..[15] = 1;
+    target.addPath(source, ui.Offset.zero, matrix4: _collapseMatrix);
   }
 
   @override

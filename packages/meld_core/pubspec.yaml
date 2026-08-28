@@ -1,6 +1,6 @@
 name: meld_core
 description: Pure Dart geometry, matching, interpolation and spring engine for Meld.
-version: 1.0.0
+version: 1.0.1
 repository: https://github.com/fluttercandies/meld
 issue_tracker: https://github.com/fluttercandies/meld/issues
 license: MIT

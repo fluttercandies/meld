@@ -121,28 +121,28 @@ packages:
       path: "../../packages/meld"
       relative: true
     source: path
-    version: "1.0.0"
+    version: "1.0.1"
   meld_core:
     dependency: "direct overridden"
     description:
       path: "../../packages/meld_core"
       relative: true
     source: path
-    version: "1.0.0"
+    version: "1.0.1"
   meld_flutter:
     dependency: "direct overridden"
     description:
       path: "../../packages/meld_flutter"
       relative: true
     source: path
-    version: "1.0.0"
+    version: "1.0.1"
   meld_font:
     dependency: "direct overridden"
     description:
       path: "../../packages/meld_font"
       relative: true
     source: path
-    version: "1.0.0"
+    version: "1.0.1"
   meta:
     dependency: transitive
     description:

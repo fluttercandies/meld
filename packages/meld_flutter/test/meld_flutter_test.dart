@@ -546,6 +546,82 @@ void main() {
     controller.dispose();
   });
 
+  test('original preserves target holes when one source contour expands',
+      () async {
+    const filledPlus = PathDataSource(
+      'M3 10H10V3H14V10H21V14H14V21H10V14H3Z',
+      paintStyle: MeldSourcePaintStyle.fill,
+    );
+    const ring = PathDataSource(
+      'M12 3A9 9 0 1 0 12 21A9 9 0 1 0 12 3Z '
+      'M12 7A5 5 0 1 0 12 17A5 5 0 1 0 12 7Z',
+      paintStyle: MeldSourcePaintStyle.fill,
+    );
+    final controller = MeldIconController(initialSource: filledPlus);
+    controller.seek(ring, 0.989);
+
+    final recorder = ui.PictureRecorder();
+    final painter = MeldIconPainter(
+      controller: controller,
+      viewBox: const MeldViewBox(0, 0, 24, 24),
+      color: Colors.white,
+      strokeWidth: 1,
+      strokeCap: ui.StrokeCap.square,
+      strokeJoin: ui.StrokeJoin.miter,
+      antiAlias: false,
+      paintStyle: MeldPaintStyle.original,
+    );
+    painter.paint(ui.Canvas(recorder), const Size(240, 240));
+    final image = await recorder.endRecording().toImage(240, 240);
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    image.dispose();
+
+    expect(
+      bytes!.getUint8((120 * 240 + 120) * 4 + 3),
+      lessThan(16),
+      reason: 'target ring hole must remain transparent during flight',
+    );
+    controller.dispose();
+  });
+
+  test('original preserves a filled target when compound contours collapse',
+      () async {
+    const ring = PathDataSource(
+      'M12 3A9 9 0 1 0 12 21A9 9 0 1 0 12 3Z '
+      'M12 7A5 5 0 1 0 12 17A5 5 0 1 0 12 7Z',
+      paintStyle: MeldSourcePaintStyle.fill,
+    );
+    const filledPlus = PathDataSource(
+      'M3 10H10V3H14V10H21V14H14V21H10V14H3Z',
+      paintStyle: MeldSourcePaintStyle.fill,
+    );
+    final controller = MeldIconController(initialSource: ring);
+    controller.seek(filledPlus, 0.989);
+
+    final recorder = ui.PictureRecorder();
+    final painter = MeldIconPainter(
+      controller: controller,
+      viewBox: const MeldViewBox(0, 0, 24, 24),
+      color: Colors.white,
+      strokeWidth: 1,
+      strokeCap: ui.StrokeCap.square,
+      strokeJoin: ui.StrokeJoin.miter,
+      antiAlias: false,
+      paintStyle: MeldPaintStyle.original,
+    );
+    painter.paint(ui.Canvas(recorder), const Size(240, 240));
+    final image = await recorder.endRecording().toImage(240, 240);
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    image.dispose();
+
+    expect(
+      bytes!.getUint8((120 * 240 + 120) * 4 + 3),
+      greaterThan(200),
+      reason: 'filled target must not cancel as source contours converge',
+    );
+    controller.dispose();
+  });
+
   test('original preserves paint weight when reversing mid-transition',
       () async {
     const geometry = 'M4 4H20V20H4Z';
