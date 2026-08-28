@@ -53,8 +53,9 @@ void main() {
       expect(initialController.progress, lessThan(1));
       await cockpit.flutter.pumpAndSettle(const Duration(milliseconds: 16));
       expect(initialController.status, MeldIconStatus.completed);
-      expect(initialController.progress, 0);
-      await cockpit.expectVisible('Play spring transition');
+      expect(initialController.progress, 1);
+      await cockpit.expectVisible('Close → Menu');
+      await cockpit.expectVisible('Reverse to start');
 
       await cockpit.tap('@from-path-circle');
       await cockpit.tap('@to-endpoint');

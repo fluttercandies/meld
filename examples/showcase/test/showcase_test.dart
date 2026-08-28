@@ -96,8 +96,9 @@ void main() {
     expect(controller.progress, lessThan(1));
     await tester.pumpAndSettle(const Duration(milliseconds: 16));
     expect(controller.status, MeldIconStatus.completed);
-    expect(controller.progress, 0);
-    expect(find.text('Play spring transition'), findsOneWidget);
+    expect(controller.progress, 1);
+    expect(find.text('Close → Menu'), findsOneWidget);
+    expect(find.text('Reverse to start'), findsOneWidget);
   });
 
   testWidgets('path, svg, and font endpoint changes all remain animatable',

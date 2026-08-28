@@ -29,7 +29,7 @@ void main() {
     final backward = await controller.reverse();
     expect(backward.end, MeldTransitionEnd.completed);
     expect(controller.currentSource, same(_line));
-    expect(controller.progress, 0);
+    expect(controller.progress, 1);
     controller.dispose();
   });
 
@@ -80,7 +80,7 @@ void main() {
     await tester.pumpAndSettle(const Duration(milliseconds: 16));
     expect((await completedBackward).end, MeldTransitionEnd.completed);
     expect(controller.currentSource, same(_line));
-    expect(controller.progress, 0);
+    expect(controller.progress, 1);
     controller.dispose();
   });
 

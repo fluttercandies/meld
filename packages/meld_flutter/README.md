@@ -16,6 +16,7 @@ final controller = MeldIconController(initialSource: from);
 
 // Put the controller in a MeldIcon, then call:
 await controller.morphTo(to, preset: SpringPreset.snappy);
+// In-flight motion reverses in place; settled endpoints play from the other side.
 await controller.reverse();
 ```
 

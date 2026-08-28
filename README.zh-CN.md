@@ -56,7 +56,7 @@ await controller.morphTo(MenuButton.close, preset: SpringPreset.snappy);
 // 拖动模式：没有 ticker，也没有隐藏状态。
 controller.seek(MenuButton.close, 0.72);
 
-// 从运行中、暂停态或完成态沿同一份几何 plan 倒放。
+// 运行中/暂停态原地反向；已完成端点会成为新的起点并正向播放。
 await controller.reverse(preset: SpringPreset.snappy);
 
 // 序列模式：多个过渡可以组合。

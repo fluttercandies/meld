@@ -400,7 +400,9 @@ final class MeldIconController extends ChangeNotifier {
   /// The existing geometry plan is kept, while the spring target and velocity
   /// direction are exchanged in place. This preserves the visible position
   /// and spring phase, so the first effective frame travels immediately in the
-  /// opposite direction without a restart hitch.
+  /// opposite direction without a restart hitch. At a settled endpoint the
+  /// opposite source is instead played as a fresh forward transition, keeping
+  /// the endpoint canonical and avoiding a reverse-path flash.
   Future<MeldTransitionResult> reverse({
     SpringConfig? spring,
     SpringPreset? preset,
@@ -412,6 +414,12 @@ final class MeldIconController extends ChangeNotifier {
       final start = _progress.clamp(0, 1).toDouble();
       final atStart = start <= 1e-6;
       final atEnd = start >= 1 - 1e-6;
+      if (_status == MeldIconStatus.completed && (atStart || atEnd)) {
+        final destination = atEnd ? _planStartSource : _target;
+        if (destination != null) {
+          return morphTo(destination, spring: spring, preset: preset);
+        }
+      }
       final end = atStart && _status != MeldIconStatus.running
           ? 1.0
           : atEnd && _status != MeldIconStatus.running

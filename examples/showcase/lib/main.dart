@@ -422,10 +422,14 @@ class _ShowcaseHomeState extends State<ShowcaseHome> {
     final spring = SpringConfig(stiffness: _stiffness, damping: _damping);
     if (_controller.status == MeldIconStatus.completed &&
         _controller.progress >= 1 - 1e-6) {
-      await _controller.reverse(spring: spring);
+      final from = _fromOption;
+      final to = _toOption;
+      _setEndpoints(from: to, to: from);
+      await _controller.morphTo(from.source, spring: spring);
       return;
     }
-    if (_controller.status == MeldIconStatus.paused) {
+    if (_controller.status == MeldIconStatus.paused &&
+        _controller.progress > 1e-6) {
       _controller.resume();
       return;
     }
