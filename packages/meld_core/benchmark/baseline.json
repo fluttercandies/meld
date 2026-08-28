@@ -1,0 +1,4 @@
+{
+  "maxColdP95Micros": 2000,
+  "maxWarmAverageMicros": 500
+}

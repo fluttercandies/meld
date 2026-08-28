@@ -1,0 +1,14 @@
+name: meld_workspace
+description: Melos workspace for Meld, production-grade vector shape morphing for Flutter.
+version: 1.0.0
+publish_to: none
+repository: https://github.com/fluttercandies/meld
+issue_tracker: https://github.com/fluttercandies/meld/issues
+license: MIT
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+
+dev_dependencies:
+  melos: ^6.2.0
+  lints: ^5.1.1

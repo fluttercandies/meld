@@ -1,0 +1,6 @@
+.dart_tool/
+build/
+coverage/
+doc/
+pubspec_overrides.yaml
+*.iml

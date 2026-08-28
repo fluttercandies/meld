@@ -1,0 +1,25 @@
+name: meld_showcase
+description: Interactive showcase for Meld vector morphing.
+version: 1.0.0
+publish_to: none
+repository: https://github.com/fluttercandies/meld
+license: MIT
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+  flutter: ">=3.24.0"
+
+dependencies:
+  cupertino_icons: ^1.0.8
+  flutter:
+    sdk: flutter
+  meld:
+    path: ../../packages/meld
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  lints: ^5.1.1
+
+flutter:
+  uses-material-design: true

@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - uses: bluefireteam/melos-action@v3
+        with:
+          melos-version: 6.2.0
+      - run: melos bootstrap
+      - run: melos run format
+      - run: melos run analyze
+      - run: melos run test
+      - run: melos run coverage:check
+      - run: melos run benchmark:check
+      - run: flutter build web --release
+        working-directory: examples/showcase

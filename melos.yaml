@@ -1,0 +1,41 @@
+name: meld_workspace
+
+packages:
+  - packages/*
+  - examples/showcase
+
+command:
+  bootstrap:
+    usePubspecOverrides: true
+
+scripts:
+  format:
+    run: dart format --output=none --set-exit-if-changed .
+    description: Format and verify every Dart source file.
+  analyze:
+    run: melos exec -- "dart analyze ."
+    description: Analyze every workspace package.
+  test:
+    run: melos run test:dart && melos run test:flutter
+    description: Run pure Dart and Flutter test suites.
+  test:dart:
+    run: melos exec --fail-fast --scope=meld_core --scope=meld_font -- "dart test"
+    description: Run pure Dart package tests.
+  test:flutter:
+    run: melos exec --fail-fast --scope=meld_flutter --scope=meld_showcase -- "flutter test"
+    description: Run Flutter widget and showcase tests.
+  benchmark:
+    run: melos exec --fail-fast --scope=meld_core -- "dart run benchmark/benchmark.dart"
+    description: Run package benchmarks where available.
+  benchmark:check:
+    run: melos exec --fail-fast --scope=meld_core -- "dart run benchmark/benchmark.dart --check"
+    description: Run benchmarks and enforce the checked-in performance budget.
+  coverage:check:
+    run: melos run coverage && dart run tool/check_coverage.dart
+    description: Collect Flutter coverage and enforce package thresholds.
+  coverage:
+    run: melos exec --fail-fast --scope=meld_flutter --scope=meld_showcase -- "flutter test --coverage"
+    description: Collect Flutter package coverage reports.
+  build:showcase:
+    run: melos exec --fail-fast --scope=meld_showcase -- "flutter build web --release"
+    description: Build the production Showcase web bundle.

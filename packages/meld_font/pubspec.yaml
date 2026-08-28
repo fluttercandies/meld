@@ -1,0 +1,21 @@
+name: meld_font
+description: Safe static TTF and OTF glyph outline adapter for Meld.
+version: 1.0.0
+repository: https://github.com/fluttercandies/meld
+issue_tracker: https://github.com/fluttercandies/meld/issues
+license: MIT
+topics:
+  - animation
+  - fonts
+  - geometry
+  - icons
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+
+dependencies:
+  meld_core: ^1.0.0
+
+dev_dependencies:
+  lints: ^5.1.1
+  test: ^1.25.8

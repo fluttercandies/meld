@@ -1,0 +1,35 @@
+# Dart and Flutter generated files
+.dart_tool/
+**/.dart_tool/
+.pub-cache/
+.pub/
+build/
+**/build/
+coverage/
+**/coverage/
+doc/api/
+**/doc/api/
+.flutter-plugins
+.flutter-plugins-dependencies
+**/.flutter-plugins-dependencies
+
+# Melos local workspace wiring
+pubspec_overrides.yaml
+**/pubspec_overrides.yaml
+packages/*/pubspec.lock
+
+# IDE and operating-system files
+.idea/
+**/.idea/
+.vscode/
+**/.vscode/
+*.iml
+*.ipr
+*.iws
+.DS_Store
+*.swp
+
+# Local logs and temporary outputs
+*.log
+*.tmp
+*.bak

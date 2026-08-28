@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 64" role="img" aria-labelledby="title">
+  <title>Meld</title>
+  <g transform="translate(0 0) scale(1)"><path fill="#8B7FFF" d="M8 16a8 8 0 0 1 8-8h8v16h8V8h8a8 8 0 0 1 8 8v8H32v8h16v8a8 8 0 0 1-8 8h-8V32h-8v16h-8a8 8 0 0 1-8-8v-8h16v-8H8v-8Z"/><path fill="#F5F7FF" d="M24 24h16v16H24z"/></g>
+  <g transform="translate(74 0)" fill="#F5F7FF"><path d="M4 52V12h10l11 17 11-17h10v40H36V30L25 46 14 30v22H4Z"/><path d="M58 12h30v9H69v7h17v8H69v7h19v9H58V12Z"/><path d="M100 12h11v30h18v10h-29V12Z"/><path d="M142 12h17c15 0 25 8 25 20s-10 20-25 20h-17V12Zm12 10v20h5c7 0 12-4 12-10s-5-10-12-10h-5Z"/></g>
+</svg>

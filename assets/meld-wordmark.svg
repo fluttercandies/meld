@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 64" role="img" aria-labelledby="title">
+  <title>Meld wordmark</title>
+  <g fill="#12131A">
+    <path d="M4 52V12h10l11 17 11-17h10v40H36V30L25 46 14 30v22H4Z"/>
+    <path d="M58 12h30v9H69v7h17v8H69v7h19v9H58V12Z"/>
+    <path d="M100 12h11v30h18v10h-29V12Z"/>
+    <path d="M142 12h17c15 0 25 8 25 20s-10 20-25 20h-17V12Zm12 10v20h5c7 0 12-4 12-10s-5-10-12-10h-5Z"/>
+  </g>
+</svg>

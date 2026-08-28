@@ -1,0 +1,26 @@
+name: meld_flutter
+description: Native Flutter widget, controller and painter for Meld vector morphs.
+version: 1.0.0
+repository: https://github.com/fluttercandies/meld
+issue_tracker: https://github.com/fluttercandies/meld/issues
+license: MIT
+topics:
+  - animation
+  - flutter
+  - icons
+  - ui
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  meld_core: ^1.0.0
+  meld_font: ^1.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  lints: ^5.1.1
